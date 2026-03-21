@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+import os
+from pathlib import Path
 from typing import Any
 
 from langchain.chat_models import init_chat_model
@@ -31,7 +33,6 @@ ANTHROPIC_COMPATIBLE_PROVIDERS = {
 
 def _create_llm(config: AppConfig):
     """Create the LLM instance based on config."""
-    import os
 
     provider = config.llm.provider
     anthropic_base_url = ANTHROPIC_COMPATIBLE_PROVIDERS.get(provider)
@@ -133,6 +134,8 @@ class OpenInternAgent:
         self.safety = SafetyMiddleware(config)
         self._agent = None
         self._checkpointer = None
+        self._store_ctx = None
+        self._postgres_store = None
 
     def initialize(self) -> None:
         """Initialize all subsystems and create the Deep Agent."""
@@ -165,6 +168,40 @@ class OpenInternAgent:
         self._checkpointer.setup()
         logger.info("Checkpointer ready (PostgreSQL)")
 
+        # Create PostgresStore for persistent file storage
+        from langgraph.store.postgres import PostgresStore
+
+        self._store_ctx = PostgresStore.from_conn_string(self.config.database_url)
+        self._postgres_store = self._store_ctx.__enter__()
+        self._postgres_store.setup()
+        logger.info("PostgresStore ready")
+
+        # Create backend: CompositeBackend
+        # - Files (read/write/edit/grep/glob) → StoreBackend → PostgreSQL (persistent)
+        # - Shell execution (execute) → LocalShellBackend → container local
+        from deepagents.backends.composite import CompositeBackend
+        from deepagents.backends.local_shell import LocalShellBackend
+        from deepagents.backends.store import StoreBackend
+
+        workspace_dir = Path("/tmp/open_intern_workspace")
+        workspace_dir.mkdir(parents=True, exist_ok=True)
+
+        local_shell = LocalShellBackend(
+            root_dir=workspace_dir,
+            virtual_mode=True,
+            inherit_env=True,
+        )
+
+        def _backend_factory(rt):
+            return CompositeBackend(
+                default=local_shell,
+                routes={
+                    "/": StoreBackend(rt, namespace=lambda ctx: ("filesystem",)),
+                },
+            )
+
+        logger.info("Backend ready (CompositeBackend: StoreBackend + LocalShellBackend)")
+
         # Create the Deep Agent
         from deepagents import create_deep_agent
 
@@ -173,6 +210,9 @@ class OpenInternAgent:
             tools=memory_tools,
             system_prompt=system_prompt,
             checkpointer=self._checkpointer,
+            store=self._postgres_store,
+            backend=_backend_factory,
+            skills=["/skills/"],
         )
         logger.info(f"Agent '{self.config.identity.name}' initialized")
 
@@ -221,16 +261,11 @@ class OpenInternAgent:
 
         # Invoke the agent in a thread pool (checkpointer doesn't support async)
         import asyncio
-        import functools
 
-        loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(
-            None,
-            functools.partial(
-                self._agent.invoke,
-                {"messages": [{"role": "user", "content": enriched_message}]},
-                invoke_config,
-            ),
+        result = await asyncio.to_thread(
+            self._agent.invoke,
+            {"messages": [{"role": "user", "content": enriched_message}]},
+            invoke_config,
         )
 
         # Extract response text
