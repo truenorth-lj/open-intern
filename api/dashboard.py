@@ -412,9 +412,22 @@ def list_threads(agent_id: str = "", user: dict = Depends(get_current_user)):
     return {"threads": threads}
 
 
+def _check_thread_access(thread_id: str, user: dict) -> dict:
+    """Check if user can access this thread. Returns thread meta or raises 403."""
+    meta = _thread_meta.get(thread_id, {})
+    is_admin = user.get("role") == "admin"
+    user_id = user.get("user_id", "")
+    if not is_admin and meta.get("user_id") and meta["user_id"] != user_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+    accessible = get_user_accessible_agents(user)
+    if accessible is not None and meta.get("agent_id", "default") not in accessible:
+        raise HTTPException(status_code=403, detail="Access denied")
+    return meta
+
+
 @router.get("/threads/{thread_id}")
 def get_thread(thread_id: str, user: dict = Depends(get_current_user)):
-    meta = _thread_meta.get(thread_id, {})
+    meta = _check_thread_access(thread_id, user)
     return {
         "thread_id": thread_id,
         "title": meta.get("title", ""),
@@ -430,6 +443,7 @@ class ThreadTitleUpdate(BaseModel):
 def update_thread_title(
     thread_id: str, body: ThreadTitleUpdate, user: dict = Depends(get_current_user)
 ):
+    _check_thread_access(thread_id, user)
     meta = _thread_meta.get(thread_id, {})
     agent_id = meta.get("agent_id", "default")
     created_at = meta.get("created_at", datetime.now(timezone.utc).isoformat())
@@ -439,6 +453,7 @@ def update_thread_title(
 
 @router.delete("/threads/{thread_id}")
 def delete_thread(thread_id: str, user: dict = Depends(get_current_user)):
+    _check_thread_access(thread_id, user)
     meta = _thread_meta.get(thread_id, {})
     agent_id = meta.get("agent_id", "default")
     try:
@@ -560,12 +575,12 @@ def get_skill(skill_name: str, agent_id: str = "", user: dict = Depends(get_curr
 
 def _store_token_usage(agent_id: str, thread_id: str, user_id: str, usage: dict[str, int]):
     """Store a token usage record."""
-    from uuid import uuid4
+    from uuid import uuid4 as _uuid4
 
     store = _get_memory_store(agent_id)
     with store._session() as session:
         record = TokenUsageRecord(
-            id=str(uuid4()),
+            id=str(_uuid4()),
             agent_id=agent_id,
             thread_id=thread_id,
             user_id=user_id,
@@ -581,6 +596,7 @@ def _store_token_usage(agent_id: str, thread_id: str, user_id: str, usage: dict[
 @router.get("/token-usage/thread/{thread_id}")
 def get_thread_token_usage(thread_id: str, user: dict = Depends(get_current_user)):
     """Get total token usage for a specific thread."""
+    _check_thread_access(thread_id, user)
     if _config is None:
         raise HTTPException(status_code=503, detail="Not initialized")
     from sqlalchemy import func
@@ -609,6 +625,9 @@ def get_thread_token_usage(thread_id: str, user: dict = Depends(get_current_user
 @router.get("/token-usage/agent/{agent_id}")
 def get_agent_token_usage(agent_id: str, user: dict = Depends(get_current_user)):
     """Get total token usage for a specific agent."""
+    accessible = get_user_accessible_agents(user)
+    if accessible is not None and agent_id not in accessible:
+        raise HTTPException(status_code=403, detail="Access denied")
     if _config is None:
         raise HTTPException(status_code=503, detail="Not initialized")
     from sqlalchemy import func

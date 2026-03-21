@@ -11,6 +11,7 @@ import secrets
 import time
 from base64 import urlsafe_b64decode, urlsafe_b64encode
 from datetime import datetime, timezone
+from typing import Any
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -47,16 +48,18 @@ def _get_session() -> Session:
 
 
 def _hash_password(password: str) -> str:
-    salt = secrets.token_hex(16)
-    h = hashlib.sha256((salt + password).encode()).hexdigest()
-    return f"{salt}:{h}"
+    salt = secrets.token_bytes(16)
+    h = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, iterations=600_000)
+    return f"{salt.hex()}:{h.hex()}"
 
 
 def _verify_password(password: str, stored: str) -> bool:
     if ":" not in stored:
         return False
-    salt, h = stored.split(":", 1)
-    return hmac.compare_digest(hashlib.sha256((salt + password).encode()).hexdigest(), h)
+    salt_hex, h_hex = stored.split(":", 1)
+    salt = bytes.fromhex(salt_hex)
+    expected = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, iterations=600_000)
+    return hmac.compare_digest(expected.hex(), h_hex)
 
 
 def _generate_password() -> str:
@@ -181,9 +184,19 @@ def get_me(user: dict = Depends(get_current_user)):
 
 
 class UserCreate(BaseModel):
-    email: str
+    email: str  # validated below
     role: str = "user"
     agent_ids: list[str] = []
+
+    @staticmethod
+    def _is_valid_email(v: str) -> bool:
+        import re
+
+        return bool(re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", v))
+
+    def model_post_init(self, __context: Any) -> None:
+        if not self._is_valid_email(self.email):
+            raise ValueError("Invalid email address")
 
 
 class UserUpdate(BaseModel):
