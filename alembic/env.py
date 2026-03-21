@@ -11,9 +11,20 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Use DATABASE_URL env var if set, otherwise fall back to alembic.ini
+# Resolve DB URL: DATABASE_URL env var > app config > alembic.ini fallback
 db_url = os.environ.get("DATABASE_URL")
+if not db_url:
+    try:
+        from core.config import load_config
+
+        app_config = load_config()
+        db_url = app_config.database_url
+    except Exception:
+        pass
 if db_url:
+    # Normalise to psycopg2 driver (same as MemoryStore)
+    if db_url.startswith("postgresql+psycopg://"):
+        db_url = db_url.replace("postgresql+psycopg://", "postgresql://", 1)
     config.set_main_option("sqlalchemy.url", db_url)
 
 target_metadata = Base.metadata
