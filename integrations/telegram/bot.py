@@ -59,10 +59,7 @@ class TelegramBot(Integration):
 
             # In groups, only respond when mentioned or replied to
             is_private = message.chat.type == "private"
-            is_mentioned = (
-                self._bot_username
-                and f"@{self._bot_username}" in (message.text or "")
-            )
+            is_mentioned = self._bot_username and f"@{self._bot_username}" in (message.text or "")
             is_reply_to_bot = (
                 message.reply_to_message
                 and message.reply_to_message.from_user
@@ -83,9 +80,7 @@ class TelegramBot(Integration):
                 event_type="message",
                 channel_id=str(message.chat_id),
                 user_id=str(user.id) if user else "unknown",
-                user_name=(
-                    user.full_name if user else "Unknown"
-                ),
+                user_name=(user.full_name if user else "Unknown"),
                 content=content,
                 is_dm=is_private,
                 thread_id=str(message.message_id),
