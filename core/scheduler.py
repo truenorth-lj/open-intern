@@ -184,9 +184,33 @@ class CronScheduler:
             metadata_json=json.dumps(metadata or {}),
         )
 
-        with self._session_factory() as session:
-            session.add(record)
-            session.commit()
+        # Insert via raw SQL to avoid session detachment issues
+        with self._engine.connect() as conn:
+            conn.execute(
+                sqlalchemy.text(
+                    "INSERT INTO scheduled_jobs "
+                    "(id, agent_id, name, schedule_type, schedule_expr, timezone, "
+                    "prompt, channel_id, enabled, created_at, updated_at, metadata_json) "
+                    "VALUES (:id, :agent_id, :name, :schedule_type, :schedule_expr, "
+                    ":timezone, :prompt, :channel_id, :enabled, :created_at, "
+                    ":updated_at, :metadata_json)"
+                ),
+                {
+                    "id": job_id,
+                    "agent_id": agent_id,
+                    "name": name,
+                    "schedule_type": schedule_type,
+                    "schedule_expr": schedule_expr,
+                    "timezone": tz,
+                    "prompt": prompt,
+                    "channel_id": channel_id,
+                    "enabled": True,
+                    "created_at": now,
+                    "updated_at": now,
+                    "metadata_json": json.dumps(metadata or {}),
+                },
+            )
+            conn.commit()
 
         # Schedule it
         self._schedule_job(record)
@@ -205,7 +229,24 @@ class CronScheduler:
                 conn.commit()
 
         logger.info(f"Created scheduled job: {job_id} ({name})")
-        return self._job_to_dict(record, next_run)
+        return {
+            "id": job_id,
+            "agent_id": agent_id,
+            "name": name,
+            "schedule_type": schedule_type,
+            "schedule_expr": schedule_expr,
+            "timezone": tz,
+            "prompt": prompt,
+            "channel_id": channel_id,
+            "enabled": True,
+            "last_run_at": None,
+            "last_run_status": None,
+            "last_run_error": None,
+            "next_run_at": next_run.isoformat() if next_run else None,
+            "created_at": now.isoformat(),
+            "updated_at": now.isoformat(),
+            "metadata": metadata or {},
+        }
 
     async def remove_job(self, job_id: str) -> bool:
         """Remove a job from DB and unschedule it."""

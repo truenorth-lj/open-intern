@@ -137,10 +137,9 @@ class TestCronSchedulerAddJob:
     """Test job creation."""
 
     async def test_add_job_creates_record(self, scheduler):
-        session = scheduler._mock_session
         scheduler._scheduler.get_job.return_value = None
 
-        # Mock the connection for next_run_at update
+        # Mock the connection for raw SQL insert and next_run_at update
         conn = MagicMock()
         scheduler._engine.connect.return_value.__enter__ = MagicMock(return_value=conn)
         scheduler._engine.connect.return_value.__exit__ = MagicMock(return_value=False)
@@ -156,8 +155,10 @@ class TestCronSchedulerAddJob:
         assert result["name"] == "Test Job"
         assert result["agent_id"] == "agent-1"
         assert result["schedule_type"] == "interval"
-        session.add.assert_called_once()
-        session.commit.assert_called_once()
+        assert result["enabled"] is True
+        # Verify SQL was executed via engine.connect()
+        conn.execute.assert_called()
+        conn.commit.assert_called()
 
 
 @pytest.mark.anyio
