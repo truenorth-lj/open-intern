@@ -47,7 +47,7 @@ Full development workflow: clarify → worktree → implement → test → PR �
 
 ## Phase 4: Local Testing
 
-11. **Start services** — `docker compose up -d postgres redis` to start DB and Redis.
+11. **Start services** — `docker compose up -d postgres` to start DB.
 12. **Start agent** — Run `python -m cli.main start --web` in background (port 8000). Wait for startup.
 13. **Start web dashboard** — `cd web && npm run dev` (port 3000).
 14. **Test the feature/fix** — Use Chrome tools or curl to verify behavior.
@@ -80,6 +80,6 @@ Full development workflow: clarify → worktree → implement → test → PR �
 ## Important Notes
 
 - Backend API runs on port **8000**, web dashboard on port **3000**
-- Docker services: PostgreSQL on 5556, Redis on 6380
+- Docker services: PostgreSQL on 5556
 - All work happens in the worktree — never modify files in the main repo directory
 - If a phase fails, stop and ask the user before proceeding

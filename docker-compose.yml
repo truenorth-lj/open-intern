@@ -15,16 +15,6 @@ services:
       timeout: 5s
       retries: 5
 
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6380:6379"
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
   agent:
     build: .
     env_file: .env
@@ -35,8 +25,6 @@ services:
       - ./logs:/app/logs
     depends_on:
       postgres:
-        condition: service_healthy
-      redis:
         condition: service_healthy
     command: python -m cli.main start
 

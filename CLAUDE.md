@@ -32,7 +32,7 @@ open_intern/
 ├── config/
 │   └── agent.example.yaml # Example agent configuration
 ├── server.py              # FastAPI app factory + platform runners
-├── docker-compose.yml     # PostgreSQL (pgvector) + Redis + agent
+├── docker-compose.yml     # PostgreSQL (pgvector) + agent
 ├── Dockerfile             # Python 3.12-slim container
 └── pyproject.toml         # Hatchling build, ruff, dependencies
 ```
@@ -52,8 +52,8 @@ open_intern logs          # View recent audit logs
 open_intern chat          # Interactive CLI chat mode
 
 # Docker services
-docker compose up -d postgres redis   # Start DB + Redis only
-docker compose up -d                  # Start everything (DB + Redis + agent)
+docker compose up -d postgres          # Start DB only
+docker compose up -d                  # Start everything (DB + agent)
 docker compose logs -f agent          # Follow agent logs
 
 # Lint & format
@@ -82,7 +82,6 @@ cd web && npm run lint                 # ESLint
 - **Agent**: LangGraph + Deep Agents + LangChain
 - **LLM Providers**: Anthropic (Claude), OpenAI, MiniMax (M2.7), Ollama
 - **Database**: PostgreSQL 17 + pgvector (via psycopg + SQLAlchemy)
-- **Cache**: Redis 7
 - **Config**: Pydantic models + YAML files
 - **CLI**: Typer + Rich
 
@@ -136,7 +135,6 @@ All platform bots extend the pattern in `integrations/base.py`. The `server.py` 
 
 ### Docker Services
 - PostgreSQL: `pgvector/pgvector:pg17` on port **5556** (host) → 5432 (container)
-- Redis: `redis:7-alpine` on port **6380** (host) → 6379 (container)
 - Agent: port **8000** (FastAPI + uvicorn)
 
 ## Development Workflow
