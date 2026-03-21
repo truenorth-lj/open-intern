@@ -128,15 +128,24 @@ def create_memory_tools(memory_store: MemoryStore) -> list:
 class OpenInternAgent:
     """The main agent that ties Deep Agents + Memory + Safety together."""
 
-    def __init__(self, config: AppConfig, agent_id: str = "default"):
+    def __init__(
+        self,
+        config: AppConfig,
+        agent_id: str = "default",
+        sandbox_enabled: bool = True,
+        e2b_sandbox_id: str = "",
+    ):
         self.config = config
         self.agent_id = agent_id
+        self.sandbox_enabled = sandbox_enabled
+        self.e2b_sandbox_id = e2b_sandbox_id
         self.memory_store = MemoryStore(config.database_url, agent_id=agent_id)
         self.safety = SafetyMiddleware(config)
         self._agent = None
         self._checkpointer = None
         self._store_ctx = None
         self._postgres_store = None
+        self._e2b_backend = None
 
     @property
     def is_initialized(self) -> bool:
@@ -191,27 +200,22 @@ class OpenInternAgent:
 
         # Create backend: CompositeBackend
         # - Files (read/write/edit/grep/glob) → StoreBackend → PostgreSQL (persistent)
-        # - Shell execution (execute) → LocalShellBackend → container local
+        # - Shell execution (execute) → E2B sandbox or LocalShellBackend
         from deepagents.backends.composite import CompositeBackend
-        from deepagents.backends.local_shell import LocalShellBackend
         from deepagents.backends.store import StoreBackend
 
-        workspace_dir = Path(f"/tmp/open_intern_workspace/{self.agent_id}")
-        workspace_dir.mkdir(parents=True, exist_ok=True)
-
-        local_shell = LocalShellBackend(
-            root_dir=workspace_dir,
-            virtual_mode=True,
-            inherit_env=True,
-        )
+        shell_backend = self._create_shell_backend()
 
         _agent_id = self.agent_id
 
         def _backend_factory(rt):
             return CompositeBackend(
-                default=local_shell,
+                default=shell_backend,
                 routes={
-                    "/": StoreBackend(rt, namespace=lambda ctx: ("agent", _agent_id, "filesystem")),
+                    "/": StoreBackend(
+                        rt,
+                        namespace=lambda ctx: ("agent", _agent_id, "filesystem"),
+                    ),
                 },
             )
 
@@ -230,6 +234,48 @@ class OpenInternAgent:
             skills=["/skills/"],
         )
         logger.info(f"Agent '{self.config.identity.name}' initialized")
+
+    def _create_shell_backend(self):
+        """Create the shell backend — E2B sandbox or local, based on config."""
+        if self.sandbox_enabled:
+            try:
+                from core.e2b_backend import E2BSandboxBackend
+
+                api_key = os.environ.get("E2B_API_KEY", "")
+                if not api_key:
+                    logger.warning(
+                        f"E2B sandbox enabled for agent {self.agent_id} "
+                        "but E2B_API_KEY not set. Falling back to local shell."
+                    )
+                else:
+                    backend = E2BSandboxBackend(
+                        agent_id=self.agent_id,
+                        api_key=api_key,
+                        sandbox_id=self.e2b_sandbox_id or None,
+                    )
+                    backend.connect()
+                    self._e2b_backend = backend
+                    logger.info(f"E2B sandbox ready: {backend.sandbox_id} (agent: {self.agent_id})")
+                    return backend
+            except ImportError:
+                logger.warning(
+                    "e2b package not installed. Falling back to local shell. "
+                    "Install with: pip install e2b"
+                )
+            except Exception as e:
+                logger.error(f"E2B sandbox failed: {e}. Falling back to local shell.")
+
+        # Fallback: local shell backend
+        from deepagents.backends.local_shell import LocalShellBackend
+
+        workspace_dir = Path(f"/tmp/open_intern_workspace/{self.agent_id}")
+        workspace_dir.mkdir(parents=True, exist_ok=True)
+        logger.info(f"Using local shell backend (agent: {self.agent_id})")
+        return LocalShellBackend(
+            root_dir=workspace_dir,
+            virtual_mode=True,
+            inherit_env=True,
+        )
 
     async def chat(
         self, message: str, context: dict[str, Any] | None = None, thread_id: str | None = None

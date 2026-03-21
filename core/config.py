@@ -112,6 +112,7 @@ class AppConfig(BaseSettings):
     anthropic_api_key: str = ""
     openai_api_key: str = ""
     minimax_api_key: str = ""
+    e2b_api_key: str = ""
 
     # Platform tokens (env var overrides YAML)
     telegram_bot_token: str = ""
