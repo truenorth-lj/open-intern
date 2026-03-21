@@ -205,13 +205,13 @@ class OpenInternAgent:
             inherit_env=True,
         )
 
-        agent_id = self.agent_id
+        _agent_id = self.agent_id
 
         def _backend_factory(rt):
             return CompositeBackend(
                 default=local_shell,
                 routes={
-                    "/": StoreBackend(rt, namespace=lambda ctx: ("agent", agent_id, "filesystem")),
+                    "/": StoreBackend(rt, namespace=lambda ctx: ("agent", _agent_id, "filesystem")),
                 },
             )
 

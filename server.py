@@ -100,10 +100,17 @@ def create_app(config: AppConfig, config_path: str) -> FastAPI:
                 content={"detail": f"No bot for agent '{agent_id}'"},
             )
         update_data = await request.json()
+
         # Process in background so we return 200 quickly to Telegram
         import asyncio
 
-        asyncio.create_task(bot.process_update(update_data))
+        async def _safe_process():
+            try:
+                await bot.process_update(update_data)
+            except Exception:
+                logger.exception(f"Failed to process Telegram update for agent '{agent_id}'")
+
+        asyncio.create_task(_safe_process())
         return {"ok": True}
 
     # Health endpoint
