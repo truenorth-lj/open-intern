@@ -14,9 +14,10 @@ RUN pip install --no-cache-dir ".[all]" fastapi uvicorn
 # Copy source
 COPY . .
 
-# Create logs directory
-RUN mkdir -p /app/logs
+# Create logs directory and default config
+RUN mkdir -p /app/logs && \
+    cp config/agent.example.yaml config/agent.yaml
 
 EXPOSE 8000
 
-CMD ["python", "-m", "cli.main", "start"]
+CMD ["python", "-m", "cli.main", "start", "--web"]
