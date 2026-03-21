@@ -128,9 +128,10 @@ def create_memory_tools(memory_store: MemoryStore) -> list:
 class OpenInternAgent:
     """The main agent that ties Deep Agents + Memory + Safety together."""
 
-    def __init__(self, config: AppConfig):
+    def __init__(self, config: AppConfig, agent_id: str = "default"):
         self.config = config
-        self.memory_store = MemoryStore(config.database_url)
+        self.agent_id = agent_id
+        self.memory_store = MemoryStore(config.database_url, agent_id=agent_id)
         self.safety = SafetyMiddleware(config)
         self._agent = None
         self._checkpointer = None
@@ -195,7 +196,7 @@ class OpenInternAgent:
         from deepagents.backends.local_shell import LocalShellBackend
         from deepagents.backends.store import StoreBackend
 
-        workspace_dir = Path("/tmp/open_intern_workspace")
+        workspace_dir = Path(f"/tmp/open_intern_workspace/{self.agent_id}")
         workspace_dir.mkdir(parents=True, exist_ok=True)
 
         local_shell = LocalShellBackend(
@@ -204,11 +205,13 @@ class OpenInternAgent:
             inherit_env=True,
         )
 
+        agent_id = self.agent_id
+
         def _backend_factory(rt):
             return CompositeBackend(
                 default=local_shell,
                 routes={
-                    "/": StoreBackend(rt, namespace=lambda ctx: ("filesystem",)),
+                    "/": StoreBackend(rt, namespace=lambda ctx: ("agent", agent_id, "filesystem")),
                 },
             )
 

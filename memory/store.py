@@ -10,7 +10,16 @@ from typing import Any
 from uuid import uuid4
 
 from pydantic import BaseModel, Field
-from sqlalchemy import Column, DateTime, Float, Index, String, Text, create_engine
+from sqlalchemy import (
+    Boolean,
+    Column,
+    DateTime,
+    Float,
+    Index,
+    String,
+    Text,
+    create_engine,
+)
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 logger = logging.getLogger(__name__)
@@ -39,10 +48,35 @@ class Base(DeclarativeBase):
     pass
 
 
+class AgentRecord(Base):
+    """Registered agent with its own identity, LLM config, and platform tokens."""
+
+    __tablename__ = "agents"
+
+    agent_id = Column(String, primary_key=True)
+    name = Column(String, nullable=False)
+    role = Column(String, nullable=False, default="AI Employee")
+    personality = Column(Text, nullable=False, default="You are a helpful AI employee.")
+    avatar_url = Column(String, nullable=False, default="")
+
+    # LLM config
+    llm_provider = Column(String, nullable=False, default="claude")
+    llm_model = Column(String, nullable=False, default="claude-sonnet-4-6")
+    llm_temperature = Column(Float, nullable=False, default=0.7)
+
+    # Platform tokens (encrypted at rest recommended)
+    telegram_token = Column(String, nullable=False, default="")
+
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime(timezone=True), nullable=False)
+    updated_at = Column(DateTime(timezone=True), nullable=False)
+
+
 class MemoryRecord(Base):
     __tablename__ = "memories"
 
     id = Column(String, primary_key=True)
+    agent_id = Column(String, nullable=False, default="default", index=True)
     content = Column(Text, nullable=False)
     scope = Column(String, nullable=False, index=True)
     scope_id = Column(String, nullable=False, default="", index=True)
@@ -51,21 +85,25 @@ class MemoryRecord(Base):
     created_at = Column(DateTime(timezone=True), nullable=False)
     metadata_json = Column(Text, nullable=False, default="{}")
 
-    __table_args__ = (Index("ix_memories_scope_scope_id", "scope", "scope_id"),)
+    __table_args__ = (
+        Index("ix_memories_scope_scope_id", "scope", "scope_id"),
+        Index("ix_memories_agent_scope", "agent_id", "scope"),
+    )
 
 
 class ThreadMetaRecord(Base):
     __tablename__ = "thread_meta"
 
     thread_id = Column(String, primary_key=True)
+    agent_id = Column(String, nullable=False, default="default", index=True)
     title = Column(Text, nullable=False, default="")
     created_at = Column(String, nullable=False, default="")
 
 
 class MemoryStore:
-    """Persistent memory store with 3-layer isolation."""
+    """Persistent memory store with 3-layer isolation and per-agent scoping."""
 
-    def __init__(self, database_url: str):
+    def __init__(self, database_url: str, agent_id: str = "default"):
         # Use psycopg (v3) driver instead of psycopg2
         if database_url.startswith("postgresql://"):
             database_url = database_url.replace("postgresql://", "postgresql+psycopg://", 1)
@@ -76,6 +114,7 @@ class MemoryStore:
             pool_pre_ping=True,
         )
         self._session_factory = sessionmaker(bind=self.engine)
+        self.agent_id = agent_id
 
     def initialize(self) -> None:
         """Create tables if needed and verify database connection."""
@@ -89,6 +128,7 @@ class MemoryStore:
         """Store a memory entry."""
         record = MemoryRecord(
             id=entry.id,
+            agent_id=self.agent_id,
             content=entry.content,
             scope=entry.scope.value,
             scope_id=entry.scope_id,
@@ -113,7 +153,7 @@ class MemoryStore:
         For now, uses simple text search. Phase 2 will add vector/embedding search.
         """
         with self._session() as session:
-            q = session.query(MemoryRecord)
+            q = session.query(MemoryRecord).filter(MemoryRecord.agent_id == self.agent_id)
 
             if scope is not None:
                 q = q.filter(MemoryRecord.scope == scope.value)
@@ -155,6 +195,7 @@ class MemoryStore:
         with self._session() as session:
             q = (
                 session.query(MemoryRecord)
+                .filter(MemoryRecord.agent_id == self.agent_id)
                 .filter(MemoryRecord.scope == scope.value)
                 .filter(MemoryRecord.scope_id == scope_id)
                 .order_by(MemoryRecord.created_at.desc())
@@ -180,7 +221,9 @@ class MemoryStore:
     def forget(self, memory_id: str) -> bool:
         """Delete a specific memory."""
         with self._session() as session:
-            record = session.query(MemoryRecord).filter_by(id=memory_id).first()
+            record = (
+                session.query(MemoryRecord).filter_by(id=memory_id, agent_id=self.agent_id).first()
+            )
             if record:
                 session.delete(record)
                 session.commit()
@@ -190,7 +233,7 @@ class MemoryStore:
     def count(self, scope: MemoryScope | None = None) -> int:
         """Count memories, optionally filtered by scope."""
         with self._session() as session:
-            q = session.query(MemoryRecord)
+            q = session.query(MemoryRecord).filter(MemoryRecord.agent_id == self.agent_id)
             if scope is not None:
                 q = q.filter(MemoryRecord.scope == scope.value)
             return q.count()
