@@ -1,3 +1,5 @@
+import type { Skill } from "./types";
+
 const BASE = "/api/dashboard";
 
 async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
@@ -9,8 +11,6 @@ async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
   }
   return res;
 }
-
-import type { Skill } from "./types";
 
 export async function getStatus() {
   const res = await apiFetch("/status");

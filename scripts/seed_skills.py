@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 
 SKILLS_DIR = Path(__file__).resolve().parent.parent / "skills"
 NAMESPACE = ("filesystem",)
+MAX_FILE_SIZE = 1_000_000  # 1MB
 
 
 def seed_skills(store, skills_dir: Path | None = None) -> int:
@@ -43,6 +44,11 @@ def seed_skills(store, skills_dir: Path | None = None) -> int:
 
         for file_path in sorted(skill_dir.rglob("*")):
             if not file_path.is_file():
+                continue
+
+            # Skip oversized files
+            if file_path.stat().st_size > MAX_FILE_SIZE:
+                logger.warning(f"Skipping oversized file: {file_path}")
                 continue
 
             # Build virtual path: /skills/git-ops/SKILL.md
