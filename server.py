@@ -76,10 +76,20 @@ def create_app(config: AppConfig, config_path: str) -> FastAPI:
         # Allow webhook endpoints without API key (Telegram sends updates directly)
         if request.url.path.startswith("/webhook/"):
             return await call_next(request)
+        # Allow auth endpoints without API key (they handle their own auth)
+        if request.url.path.startswith("/api/dashboard/auth/"):
+            return await call_next(request)
         key = request.headers.get("X-API-Key", "")
         if key != api_secret:
             return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
         return await call_next(request)
+
+    # Mount auth API
+    from api.auth import init_auth
+    from api.auth import router as auth_router
+
+    init_auth(config.database_url)
+    app.include_router(auth_router)
 
     # Mount dashboard API
     from api.dashboard import init_dashboard

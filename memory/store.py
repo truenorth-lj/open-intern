@@ -103,6 +103,35 @@ class ThreadMetaRecord(Base):
     agent_id = Column(String, nullable=False, default="default", index=True)
     title = Column(Text, nullable=False, default="")
     created_at = Column(String, nullable=False, default="")
+    user_id = Column(String, nullable=True, index=True)
+
+
+class UserRecord(Base):
+    """Dashboard user account."""
+
+    __tablename__ = "users"
+
+    id = Column(String, primary_key=True)
+    email = Column(String, nullable=False, unique=True, index=True)
+    password_hash = Column(String, nullable=False)
+    role = Column(String, nullable=False, default="user")  # admin | user
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime(timezone=True), nullable=False)
+    updated_at = Column(DateTime(timezone=True), nullable=False)
+
+
+class UserAgentAccess(Base):
+    """Many-to-many: which users can access which agents."""
+
+    __tablename__ = "user_agent_access"
+
+    user_id = Column(String, primary_key=True)
+    agent_id = Column(String, primary_key=True)
+
+    __table_args__ = (
+        Index("ix_user_agent_access_user", "user_id"),
+        Index("ix_user_agent_access_agent", "agent_id"),
+    )
 
 
 class MemoryStore:
