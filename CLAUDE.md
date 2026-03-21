@@ -139,6 +139,15 @@ All platform bots extend the pattern in `integrations/base.py`. The `server.py` 
 
 ## Development Workflow
 
+**MANDATORY**: All new work (features, bug fixes, refactors, etc.) MUST follow this workflow:
+1. **Create a worktree** — always start by opening a worktree (`/dev-test` or equivalent) to isolate changes.
+2. **Implement & test** — do all work inside the worktree.
+3. **Create PR** — push and open a pull request.
+4. **Run PR review cycle** — run `/pr-review-cycle` to get automated MiniMax review, fix issues, and repeat until clean.
+5. **Merge & cleanup** — merge the PR and clean up the worktree.
+
+Never commit directly to `main`. Never skip the PR review cycle.
+
 - **Feature / Bug Fix**: Use worktree workflow (`/dev-test`) — create worktree, implement, test, PR, review, merge, cleanup.
 - **PR Review**: Use `/pr-review-cycle` — automated MiniMax review + fix cycle.
 - **Deployment Monitor**: Use `/cicd-monitor` — watch docker deployment logs and auto-fix.

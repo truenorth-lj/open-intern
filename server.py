@@ -28,10 +28,18 @@ def create_app(config: AppConfig, agent: OpenInternAgent, config_path: str) -> F
     """Create the FastAPI app with dashboard API and platform webhooks."""
     app = FastAPI(title=f"open_intern - {config.identity.name}")
 
-    # CORS for Next.js dev server and Zeabur frontend
+    # CORS — configurable via CORS_ORIGINS env var (comma-separated)
+    import os
+
+    default_origins = ["http://localhost:3000", "https://open-intern.zeabur.app"]
+    env_origins = os.environ.get("CORS_ORIGINS")
+    if env_origins is not None:
+        cors_origins = [o.strip() for o in env_origins.split(",") if o.strip()]
+    else:
+        cors_origins = default_origins
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["http://localhost:3000", "https://open-intern.zeabur.app"],
+        allow_origins=cors_origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

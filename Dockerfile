@@ -18,6 +18,9 @@ COPY . .
 RUN mkdir -p /app/logs && \
     cp config/agent.example.yaml config/agent.yaml
 
-EXPOSE 8080
+EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" || exit 1
 
 CMD ["python", "-m", "cli.main", "start", "--web"]

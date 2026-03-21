@@ -24,7 +24,7 @@ export default function MemoriesPage() {
   const limit = 20;
 
   useEffect(() => {
-    getMemoryStats().then(setStats).catch(() => {});
+    getMemoryStats().then(setStats).catch((err) => console.error("Failed to load memory stats:", err));
   }, []);
 
   useEffect(() => {
@@ -34,7 +34,7 @@ export default function MemoriesPage() {
         setMemories(data.items);
         setTotal(data.total);
       })
-      .catch(() => {});
+      .catch((err) => console.error("Failed to load memories:", err));
   }, [scope, page]);
 
   async function handleDelete(id: string) {
@@ -42,7 +42,7 @@ export default function MemoriesPage() {
     setMemories((prev) => prev.filter((m) => m.id !== id));
     setTotal((prev) => prev - 1);
     if (stats) {
-      getMemoryStats().then(setStats).catch(() => {});
+      getMemoryStats().then(setStats).catch((err) => console.error("Failed to refresh memory stats:", err));
     }
   }
 

@@ -36,8 +36,8 @@ export default function NewChatPage() {
         { role: "assistant", content: data.response },
       ];
       sessionStorage.setItem(`thread_${data.thread_id}`, JSON.stringify(initialMessages));
-      // Refresh sidebar then navigate
-      (window as unknown as Record<string, () => void>).__refreshThreads?.();
+      // Notify sidebar to refresh thread list
+      document.dispatchEvent(new CustomEvent("oi:refresh-threads"));
       router.push(`/chat/${data.thread_id}`);
     } catch {
       setMessages((prev) => [
@@ -68,7 +68,7 @@ export default function NewChatPage() {
           )}
           {messages.map((msg, i) => (
             <div
-              key={i}
+              key={`${msg.role}-${i}`}
               className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
             >
               <Card
