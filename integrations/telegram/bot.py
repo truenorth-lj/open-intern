@@ -16,9 +16,16 @@ class TelegramBot(Integration):
 
     def __init__(self, agent: OpenInternAgent, config: AppConfig):
         super().__init__(agent)
-        self.token = config.platform.telegram.bot_token
+        token = config.platform.telegram.bot_token
+        if not token.strip():
+            raise ValueError(
+                "Telegram bot_token is required. Set it in config/agent.yaml "
+                "under platform.telegram.bot_token"
+            )
+        self.token = token
         self._app = None
         self._bot_id: str = ""
+        self._bot_username: str = ""
 
     async def start(self) -> None:
         """Start the Telegram bot (long polling)."""
