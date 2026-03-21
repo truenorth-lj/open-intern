@@ -81,7 +81,7 @@ class Integration(ABC):
         thread_id = event.thread_id or event.channel_id
         if not thread_id:
             logger.warning(f"No thread_id or channel_id for event from {event.platform}")
-        response = await self.agent.chat(
+        response, _token_usage = await self.agent.chat(
             event.content, context=event.to_context(), thread_id=thread_id
         )
 

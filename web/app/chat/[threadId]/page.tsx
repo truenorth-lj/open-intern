@@ -5,8 +5,14 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { sendMessage } from "@/lib/api";
+import { sendMessage, getThreadTokenUsage } from "@/lib/api";
 import type { ChatMessage } from "@/lib/types";
+
+function formatTokenCount(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return String(n);
+}
 
 export default function ThreadPage({
   params,
@@ -17,13 +23,19 @@ export default function ThreadPage({
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [tokenUsage, setTokenUsage] = useState<{
+    input_tokens: number;
+    output_tokens: number;
+    total_tokens: number;
+    request_count: number;
+  } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // Load messages from sessionStorage when entering a thread (e.g. after new chat redirect)
+  // Load messages from sessionStorage when entering a thread
   useEffect(() => {
     const key = `thread_${threadId}`;
     const stored = sessionStorage.getItem(key);
@@ -36,6 +48,10 @@ export default function ThreadPage({
     } else {
       setMessages([]);
     }
+    // Load token usage
+    getThreadTokenUsage(threadId)
+      .then(setTokenUsage)
+      .catch(() => {});
   }, [threadId]);
 
   async function handleSend() {
@@ -57,6 +73,10 @@ export default function ThreadPage({
         sessionStorage.setItem(`thread_${threadId}`, JSON.stringify(updated));
         return updated;
       });
+      // Refresh token usage after each message
+      getThreadTokenUsage(threadId)
+        .then(setTokenUsage)
+        .catch(() => {});
     } catch {
       setMessages((prev) => [
         ...prev,
@@ -76,6 +96,15 @@ export default function ThreadPage({
 
   return (
     <>
+      {tokenUsage && tokenUsage.total_tokens > 0 && (
+        <div className="flex gap-4 text-xs text-muted-foreground mb-2 px-1">
+          <span>Tokens: {formatTokenCount(tokenUsage.total_tokens)}</span>
+          <span>In: {formatTokenCount(tokenUsage.input_tokens)}</span>
+          <span>Out: {formatTokenCount(tokenUsage.output_tokens)}</span>
+          <span>Requests: {tokenUsage.request_count}</span>
+        </div>
+      )}
+
       <ScrollArea className="flex-1 mb-4">
         <div className="space-y-4 pr-4">
           {messages.length === 0 && (

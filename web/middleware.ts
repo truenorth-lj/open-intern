@@ -2,15 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 
 const DASHBOARD_PASSWORD = process.env.DASHBOARD_PASSWORD || "";
 
-/** Edge-compatible token generation using Web Crypto API. */
-async function makeTokenEdge(password: string, secret: string): Promise<string> {
-  const data = new TextEncoder().encode(password + secret);
-  const hash = await crypto.subtle.digest("SHA-256", data);
-  return Array.from(new Uint8Array(hash))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-}
-
 export async function middleware(request: NextRequest) {
   // No password set = no auth required (local dev)
   if (!DASHBOARD_PASSWORD) {
@@ -23,20 +14,30 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  const secret = process.env.AUTH_SECRET;
-  if (!secret) {
-    // AUTH_SECRET not set — cannot validate, redirect to login
-    const loginUrl = new URL("/login", request.url);
-    return NextResponse.redirect(loginUrl);
+  // Check JWT token cookie
+  const token = request.cookies.get("oi_token")?.value;
+  if (!token) {
+    // Check legacy cookie for backward compat
+    const legacySession = request.cookies.get("oi_session")?.value;
+    if (!legacySession) {
+      return NextResponse.redirect(new URL("/login", request.url));
+    }
+    // Legacy cookie exists — let it through (will be migrated on next login)
+    return NextResponse.next();
   }
 
-  // Check session cookie
-  const session = request.cookies.get("oi_session")?.value;
-  const expected = await makeTokenEdge(DASHBOARD_PASSWORD, secret);
-
-  if (session !== expected) {
-    const loginUrl = new URL("/login", request.url);
-    return NextResponse.redirect(loginUrl);
+  // Validate JWT structure and expiry (edge-compatible)
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) {
+      return NextResponse.redirect(new URL("/login", request.url));
+    }
+    const payload = JSON.parse(atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")));
+    if (payload.exp && payload.exp < Date.now() / 1000) {
+      return NextResponse.redirect(new URL("/login", request.url));
+    }
+  } catch {
+    return NextResponse.redirect(new URL("/login", request.url));
   }
 
   return NextResponse.next();

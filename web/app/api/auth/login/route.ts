@@ -1,27 +1,40 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { makeToken, getAuthSecret } from "@/lib/auth";
 
-const DASHBOARD_PASSWORD = process.env.DASHBOARD_PASSWORD || "";
+const API_URL = process.env.API_URL || "http://localhost:8000";
+const API_SECRET_KEY = process.env.API_SECRET_KEY || "";
 
 export async function POST(req: NextRequest) {
-  if (!DASHBOARD_PASSWORD) {
-    return NextResponse.json({ error: "No password configured" }, { status: 500 });
+  const { email, password } = await req.json();
+  if (!email || !password) {
+    return NextResponse.json({ error: "Email and password required" }, { status: 400 });
   }
 
-  const { password } = await req.json();
-  if (password !== DASHBOARD_PASSWORD) {
-    return NextResponse.json({ error: "Wrong password" }, { status: 401 });
+  // Forward login to backend auth API
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (API_SECRET_KEY) {
+    headers["X-API-Key"] = API_SECRET_KEY;
   }
 
-  let token: string;
-  try {
-    token = makeToken(password, getAuthSecret());
-  } catch {
-    return NextResponse.json({ error: "Server misconfiguration: AUTH_SECRET not set" }, { status: 500 });
+  const res = await fetch(`${API_URL}/api/dashboard/auth/login`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ email, password }),
+  });
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    return NextResponse.json(
+      { error: data.detail || "Invalid credentials" },
+      { status: 401 }
+    );
   }
+
+  const data = await res.json();
   const cookieStore = await cookies();
-  cookieStore.set("oi_session", token, {
+
+  // Set JWT token cookie
+  cookieStore.set("oi_token", data.token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
@@ -29,5 +42,11 @@ export async function POST(req: NextRequest) {
     maxAge: 60 * 60 * 24 * 7, // 7 days
   });
 
-  return NextResponse.json({ ok: true });
+  // Clear legacy cookie if exists
+  cookieStore.delete("oi_session");
+
+  return NextResponse.json({
+    ok: true,
+    user: data.user,
+  });
 }

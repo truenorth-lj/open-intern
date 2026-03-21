@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { cookies } from "next/headers";
 
 const API_URL = process.env.API_URL || "http://localhost:8000";
 const API_SECRET_KEY = process.env.API_SECRET_KEY || "";
@@ -16,6 +17,14 @@ async function proxyRequest(
   if (API_SECRET_KEY) {
     headers.set("X-API-Key", API_SECRET_KEY);
   }
+
+  // Forward JWT token from cookie as Authorization header
+  const cookieStore = await cookies();
+  const token = cookieStore.get("oi_token")?.value;
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+
   headers.delete("host");
 
   const res = await fetch(url.toString(), {

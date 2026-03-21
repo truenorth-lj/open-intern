@@ -8,11 +8,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, field_validator
 
+from api.auth import get_current_user, get_user_accessible_agents, require_admin
 from core.config import AppConfig, IdentityConfig, LLMConfig
-from memory.store import MemoryRecord, MemoryScope, MemoryStore, ThreadMetaRecord
+from memory.store import MemoryRecord, MemoryScope, MemoryStore, ThreadMetaRecord, TokenUsageRecord
 from scripts.seed_skills import list_skills as _list_skills
 
 logger = logging.getLogger(__name__)
@@ -80,13 +81,17 @@ class AgentUpdate(BaseModel):
 
 
 @router.get("/agents")
-def list_agents():
+def list_agents(user: dict = Depends(get_current_user)):
     mgr = _get_manager()
-    return {"agents": mgr.list_agents()}
+    agents = mgr.list_agents()
+    accessible = get_user_accessible_agents(user)
+    if accessible is not None:
+        agents = [a for a in agents if a["agent_id"] in accessible]
+    return {"agents": agents}
 
 
 @router.post("/agents")
-def create_agent(body: AgentCreate):
+def create_agent(body: AgentCreate, admin: dict = Depends(require_admin)):
     mgr = _get_manager()
     try:
         result = mgr.create_agent(**body.model_dump())
@@ -96,7 +101,10 @@ def create_agent(body: AgentCreate):
 
 
 @router.get("/agents/{agent_id}")
-def get_agent_detail(agent_id: str):
+def get_agent_detail(agent_id: str, user: dict = Depends(get_current_user)):
+    accessible = get_user_accessible_agents(user)
+    if accessible is not None and agent_id not in accessible:
+        raise HTTPException(status_code=403, detail="Access denied")
     mgr = _get_manager()
     agents = mgr.list_agents()
     for a in agents:
@@ -106,7 +114,7 @@ def get_agent_detail(agent_id: str):
 
 
 @router.put("/agents/{agent_id}")
-def update_agent(agent_id: str, body: AgentUpdate):
+def update_agent(agent_id: str, body: AgentUpdate, admin: dict = Depends(require_admin)):
     mgr = _get_manager()
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
     if not updates:
@@ -119,7 +127,7 @@ def update_agent(agent_id: str, body: AgentUpdate):
 
 
 @router.delete("/agents/{agent_id}")
-def delete_agent(agent_id: str):
+def delete_agent(agent_id: str, admin: dict = Depends(require_admin)):
     mgr = _get_manager()
     try:
         result = mgr.delete_agent(agent_id)
@@ -132,14 +140,18 @@ def delete_agent(agent_id: str):
 
 
 @router.get("/status")
-def get_status():
+def get_status(user: dict = Depends(get_current_user)):
     if _config is None:
         raise HTTPException(status_code=503, detail="Not initialized")
     mgr = _get_manager()
+    accessible = get_user_accessible_agents(user)
+    agent_ids = list(mgr.agents.keys())
+    if accessible is not None:
+        agent_ids = [a for a in agent_ids if a in accessible]
     return {
         "platform": _config.active_platform,
-        "agents": len(mgr.agents),
-        "agent_ids": list(mgr.agents.keys()),
+        "agents": len(agent_ids),
+        "agent_ids": agent_ids,
     }
 
 
@@ -147,7 +159,7 @@ def get_status():
 
 
 @router.get("/config")
-def get_config():
+def get_config(user: dict = Depends(get_current_user)):
     if _config is None:
         raise HTTPException(status_code=503, detail="Not initialized")
     data = _config.model_dump()
@@ -179,7 +191,7 @@ class IdentityUpdate(BaseModel):
 
 
 @router.put("/config/identity")
-def update_identity(body: IdentityUpdate):
+def update_identity(body: IdentityUpdate, admin: dict = Depends(require_admin)):
     global _config
     if _config is None:
         raise HTTPException(status_code=503, detail="Not initialized")
@@ -197,7 +209,7 @@ class LLMUpdate(BaseModel):
 
 
 @router.put("/config/llm")
-def update_llm(body: LLMUpdate):
+def update_llm(body: LLMUpdate, admin: dict = Depends(require_admin)):
     global _config
     if _config is None:
         raise HTTPException(status_code=503, detail="Not initialized")
@@ -210,8 +222,19 @@ def update_llm(body: LLMUpdate):
 # --- Chat (per-agent) ---
 
 
-def _save_thread_meta(thread_id: str, title: str, created_at: str = "", agent_id: str = "default"):
-    _thread_meta[thread_id] = {"title": title, "created_at": created_at, "agent_id": agent_id}
+def _save_thread_meta(
+    thread_id: str,
+    title: str,
+    created_at: str = "",
+    agent_id: str = "default",
+    user_id: str = "",
+):
+    _thread_meta[thread_id] = {
+        "title": title,
+        "created_at": created_at,
+        "agent_id": agent_id,
+        "user_id": user_id,
+    }
     store = _get_memory_store(agent_id)
     with store._session() as session:
         existing = session.query(ThreadMetaRecord).filter_by(thread_id=thread_id).first()
@@ -224,13 +247,14 @@ def _save_thread_meta(thread_id: str, title: str, created_at: str = "", agent_id
                 agent_id=agent_id,
                 title=title,
                 created_at=created_at,
+                user_id=user_id or None,
             )
             session.add(record)
         session.commit()
 
 
 def _load_thread_meta():
-    """Load thread metadata from DB. Gracefully handles missing agent_id column."""
+    """Load thread metadata from DB. Gracefully handles missing columns."""
     if _config is None:
         return
     try:
@@ -238,27 +262,28 @@ def _load_thread_meta():
         from psycopg.rows import dict_row
 
         with psycopg.connect(_config.database_url, autocommit=True, row_factory=dict_row) as conn:
-            # Check if agent_id column exists
+            # Check which columns exist
             cols = conn.execute(
-                "SELECT column_name FROM information_schema.columns "
-                "WHERE table_name='thread_meta' AND column_name='agent_id'"
+                "SELECT column_name FROM information_schema.columns WHERE table_name='thread_meta'"
             ).fetchall()
-            has_agent_id = len(cols) > 0
+            col_names = {c["column_name"] for c in cols}
+            has_agent_id = "agent_id" in col_names
+            has_user_id = "user_id" in col_names
 
+            select_cols = "thread_id, title, created_at"
             if has_agent_id:
-                rows = conn.execute(
-                    "SELECT thread_id, title, created_at, agent_id FROM thread_meta"
-                ).fetchall()
-            else:
-                rows = conn.execute(
-                    "SELECT thread_id, title, created_at FROM thread_meta"
-                ).fetchall()
+                select_cols += ", agent_id"
+            if has_user_id:
+                select_cols += ", user_id"
+
+            rows = conn.execute(f"SELECT {select_cols} FROM thread_meta").fetchall()
 
             for row in rows:
                 _thread_meta[row["thread_id"]] = {
                     "title": row["title"],
                     "created_at": row["created_at"],
                     "agent_id": row.get("agent_id", "default"),
+                    "user_id": row.get("user_id", ""),
                 }
             logger.info(f"Loaded {len(rows)} thread metadata entries")
     except Exception as e:
@@ -276,11 +301,16 @@ class ChatResponse(BaseModel):
     thread_id: str
     title: str
     agent_id: str
+    token_usage: dict[str, int] = {}
 
 
 @router.post("/chat", response_model=ChatResponse)
-async def chat(body: ChatRequest):
+async def chat(body: ChatRequest, user: dict = Depends(get_current_user)):
     agent_id = body.agent_id or "default"
+    # Check user has access to this agent
+    accessible = get_user_accessible_agents(user)
+    if accessible is not None and agent_id not in accessible:
+        raise HTTPException(status_code=403, detail="Access denied to this agent")
     try:
         agent = _get_agent(agent_id)
     except Exception:
@@ -290,24 +320,40 @@ async def chat(body: ChatRequest):
 
     is_new = not body.thread_id
     thread_id = body.thread_id or str(uuid4())
-    response = await agent.chat(
+    user_name = user.get("email", "user").split("@")[0]
+    response, token_usage = await agent.chat(
         body.message,
         context={
             "platform": "web",
             "channel_id": "web-dashboard",
-            "user_name": "admin",
+            "user_name": user_name,
+            "user_id": user.get("user_id", ""),
             "is_dm": True,
         },
         thread_id=thread_id,
     )
 
+    user_id = user.get("user_id", "")
+
+    # Store token usage
+    if token_usage.get("total_tokens", 0) > 0:
+        _store_token_usage(agent_id, thread_id, user_id, token_usage)
+
     if is_new:
         title = _generate_thread_title(agent, body.message)
-        _save_thread_meta(thread_id, title, datetime.now(timezone.utc).isoformat(), agent_id)
+        _save_thread_meta(
+            thread_id, title, datetime.now(timezone.utc).isoformat(), agent_id, user_id
+        )
     else:
         title = _thread_meta.get(thread_id, {}).get("title", "")
 
-    return ChatResponse(response=response, thread_id=thread_id, title=title, agent_id=agent_id)
+    return ChatResponse(
+        response=response,
+        thread_id=thread_id,
+        title=title,
+        agent_id=agent_id,
+        token_usage=token_usage,
+    )
 
 
 def _generate_thread_title(agent, user_message: str) -> str:
@@ -338,12 +384,21 @@ def _generate_thread_title(agent, user_message: str) -> str:
 
 
 @router.get("/threads")
-def list_threads(agent_id: str = ""):
-    """List conversation threads, optionally filtered by agent_id."""
-    # Get all threads from cache, optionally filtered
+def list_threads(agent_id: str = "", user: dict = Depends(get_current_user)):
+    """List conversation threads, filtered by user access and optionally by agent_id."""
+    accessible = get_user_accessible_agents(user)
+    user_id = user.get("user_id", "")
+    is_admin = user.get("role") == "admin"
+
     threads = []
     for tid, meta in _thread_meta.items():
         if agent_id and meta.get("agent_id", "default") != agent_id:
+            continue
+        # Users only see their own threads
+        if not is_admin and meta.get("user_id") and meta["user_id"] != user_id:
+            continue
+        # Users only see threads for agents they have access to
+        if accessible is not None and meta.get("agent_id", "default") not in accessible:
             continue
         threads.append(
             {
@@ -357,9 +412,22 @@ def list_threads(agent_id: str = ""):
     return {"threads": threads}
 
 
-@router.get("/threads/{thread_id}")
-def get_thread(thread_id: str):
+def _check_thread_access(thread_id: str, user: dict) -> dict:
+    """Check if user can access this thread. Returns thread meta or raises 403."""
     meta = _thread_meta.get(thread_id, {})
+    is_admin = user.get("role") == "admin"
+    user_id = user.get("user_id", "")
+    if not is_admin and meta.get("user_id") and meta["user_id"] != user_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+    accessible = get_user_accessible_agents(user)
+    if accessible is not None and meta.get("agent_id", "default") not in accessible:
+        raise HTTPException(status_code=403, detail="Access denied")
+    return meta
+
+
+@router.get("/threads/{thread_id}")
+def get_thread(thread_id: str, user: dict = Depends(get_current_user)):
+    meta = _check_thread_access(thread_id, user)
     return {
         "thread_id": thread_id,
         "title": meta.get("title", ""),
@@ -372,7 +440,10 @@ class ThreadTitleUpdate(BaseModel):
 
 
 @router.put("/threads/{thread_id}/title")
-def update_thread_title(thread_id: str, body: ThreadTitleUpdate):
+def update_thread_title(
+    thread_id: str, body: ThreadTitleUpdate, user: dict = Depends(get_current_user)
+):
+    _check_thread_access(thread_id, user)
     meta = _thread_meta.get(thread_id, {})
     agent_id = meta.get("agent_id", "default")
     created_at = meta.get("created_at", datetime.now(timezone.utc).isoformat())
@@ -381,7 +452,8 @@ def update_thread_title(thread_id: str, body: ThreadTitleUpdate):
 
 
 @router.delete("/threads/{thread_id}")
-def delete_thread(thread_id: str):
+def delete_thread(thread_id: str, user: dict = Depends(get_current_user)):
+    _check_thread_access(thread_id, user)
     meta = _thread_meta.get(thread_id, {})
     agent_id = meta.get("agent_id", "default")
     try:
@@ -408,7 +480,13 @@ def delete_thread(thread_id: str):
 
 
 @router.get("/memories")
-def list_memories(agent_id: str = "", scope: str | None = None, limit: int = 50, offset: int = 0):
+def list_memories(
+    agent_id: str = "",
+    scope: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+    user: dict = Depends(get_current_user),
+):
     aid = agent_id or "default"
     store = _get_memory_store(aid)
     with store._session() as session:
@@ -435,7 +513,7 @@ def list_memories(agent_id: str = "", scope: str | None = None, limit: int = 50,
 
 
 @router.get("/memories/stats")
-def memory_stats(agent_id: str = ""):
+def memory_stats(agent_id: str = "", user: dict = Depends(get_current_user)):
     aid = agent_id or "default"
     store = _get_memory_store(aid)
     return {
@@ -448,7 +526,7 @@ def memory_stats(agent_id: str = ""):
 
 
 @router.delete("/memories/{memory_id}")
-def delete_memory(memory_id: str, agent_id: str = ""):
+def delete_memory(memory_id: str, agent_id: str = "", user: dict = Depends(get_current_user)):
     aid = agent_id or "default"
     store = _get_memory_store(aid)
     deleted = store.forget(memory_id)
@@ -461,7 +539,7 @@ def delete_memory(memory_id: str, agent_id: str = ""):
 
 
 @router.get("/skills")
-def list_skills(agent_id: str = ""):
+def list_skills(agent_id: str = "", user: dict = Depends(get_current_user)):
     try:
         agent = _get_agent(agent_id or None)
     except Exception:
@@ -476,7 +554,7 @@ _SKILL_NAME_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
 
 
 @router.get("/skills/{skill_name}")
-def get_skill(skill_name: str, agent_id: str = ""):
+def get_skill(skill_name: str, agent_id: str = "", user: dict = Depends(get_current_user)):
     if not _SKILL_NAME_RE.match(skill_name):
         raise HTTPException(status_code=400, detail="Invalid skill name")
     try:
@@ -490,6 +568,141 @@ def get_skill(skill_name: str, agent_id: str = ""):
         if s["name"] == skill_name:
             return s
     raise HTTPException(status_code=404, detail=f"Skill '{skill_name}' not found")
+
+
+# --- Token Usage ---
+
+
+def _store_token_usage(agent_id: str, thread_id: str, user_id: str, usage: dict[str, int]):
+    """Store a token usage record."""
+    from uuid import uuid4 as _uuid4
+
+    store = _get_memory_store(agent_id)
+    with store._session() as session:
+        record = TokenUsageRecord(
+            id=str(_uuid4()),
+            agent_id=agent_id,
+            thread_id=thread_id,
+            user_id=user_id,
+            input_tokens=usage.get("input_tokens", 0),
+            output_tokens=usage.get("output_tokens", 0),
+            total_tokens=usage.get("total_tokens", 0),
+            created_at=datetime.now(timezone.utc),
+        )
+        session.add(record)
+        session.commit()
+
+
+@router.get("/token-usage/thread/{thread_id}")
+def get_thread_token_usage(thread_id: str, user: dict = Depends(get_current_user)):
+    """Get total token usage for a specific thread."""
+    _check_thread_access(thread_id, user)
+    if _config is None:
+        raise HTTPException(status_code=503, detail="Not initialized")
+    from sqlalchemy import func
+
+    store = _get_memory_store()
+    with store._session() as session:
+        row = (
+            session.query(
+                func.coalesce(func.sum(TokenUsageRecord.input_tokens), 0).label("input_tokens"),
+                func.coalesce(func.sum(TokenUsageRecord.output_tokens), 0).label("output_tokens"),
+                func.coalesce(func.sum(TokenUsageRecord.total_tokens), 0).label("total_tokens"),
+                func.count(TokenUsageRecord.id).label("request_count"),
+            )
+            .filter(TokenUsageRecord.thread_id == thread_id)
+            .first()
+        )
+        return {
+            "thread_id": thread_id,
+            "input_tokens": row.input_tokens if row else 0,
+            "output_tokens": row.output_tokens if row else 0,
+            "total_tokens": row.total_tokens if row else 0,
+            "request_count": row.request_count if row else 0,
+        }
+
+
+@router.get("/token-usage/agent/{agent_id}")
+def get_agent_token_usage(agent_id: str, user: dict = Depends(get_current_user)):
+    """Get total token usage for a specific agent."""
+    accessible = get_user_accessible_agents(user)
+    if accessible is not None and agent_id not in accessible:
+        raise HTTPException(status_code=403, detail="Access denied")
+    if _config is None:
+        raise HTTPException(status_code=503, detail="Not initialized")
+    from sqlalchemy import func
+
+    store = _get_memory_store(agent_id)
+    with store._session() as session:
+        row = (
+            session.query(
+                func.coalesce(func.sum(TokenUsageRecord.input_tokens), 0).label("input_tokens"),
+                func.coalesce(func.sum(TokenUsageRecord.output_tokens), 0).label("output_tokens"),
+                func.coalesce(func.sum(TokenUsageRecord.total_tokens), 0).label("total_tokens"),
+                func.count(TokenUsageRecord.id).label("request_count"),
+            )
+            .filter(TokenUsageRecord.agent_id == agent_id)
+            .first()
+        )
+        return {
+            "agent_id": agent_id,
+            "input_tokens": row.input_tokens if row else 0,
+            "output_tokens": row.output_tokens if row else 0,
+            "total_tokens": row.total_tokens if row else 0,
+            "request_count": row.request_count if row else 0,
+        }
+
+
+@router.get("/token-usage/summary")
+def get_token_usage_summary(user: dict = Depends(get_current_user)):
+    """Get token usage summary for all agents, with per-agent breakdown."""
+    if _config is None:
+        raise HTTPException(status_code=503, detail="Not initialized")
+    from sqlalchemy import func
+
+    accessible = get_user_accessible_agents(user)
+    store = _get_memory_store()
+    with store._session() as session:
+        q = session.query(
+            TokenUsageRecord.agent_id,
+            func.coalesce(func.sum(TokenUsageRecord.input_tokens), 0).label("input_tokens"),
+            func.coalesce(func.sum(TokenUsageRecord.output_tokens), 0).label("output_tokens"),
+            func.coalesce(func.sum(TokenUsageRecord.total_tokens), 0).label("total_tokens"),
+            func.count(TokenUsageRecord.id).label("request_count"),
+        ).group_by(TokenUsageRecord.agent_id)
+
+        if accessible is not None:
+            q = q.filter(TokenUsageRecord.agent_id.in_(accessible))
+
+        agents = []
+        grand_input = 0
+        grand_output = 0
+        grand_total = 0
+        grand_requests = 0
+        for row in q.all():
+            agents.append(
+                {
+                    "agent_id": row.agent_id,
+                    "input_tokens": row.input_tokens,
+                    "output_tokens": row.output_tokens,
+                    "total_tokens": row.total_tokens,
+                    "request_count": row.request_count,
+                }
+            )
+            grand_input += row.input_tokens
+            grand_output += row.output_tokens
+            grand_total += row.total_tokens
+            grand_requests += row.request_count
+
+        return {
+            "agents": agents,
+            "total": {
+                "input_tokens": grand_input,
+                "output_tokens": grand_output,
+                "total_tokens": grand_total,
+                "request_count": grand_requests,
+            },
+        }
 
 
 # --- Scheduled Jobs ---

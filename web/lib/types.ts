@@ -55,3 +55,9 @@ export interface Skill {
   version?: string;
   content?: string;
 }
+
+export interface AuthUser {
+  user_id: string;
+  email: string;
+  role: "admin" | "user";
+}
