@@ -96,6 +96,29 @@ class MemoryRecord(Base):
     )
 
 
+class ScheduledJobRecord(Base):
+    """Persistent scheduled job definition."""
+
+    __tablename__ = "scheduled_jobs"
+
+    id = Column(String, primary_key=True)
+    agent_id = Column(String, nullable=False, index=True)
+    name = Column(String, nullable=False)
+    schedule_type = Column(String, nullable=False)  # "cron" | "interval" | "once"
+    schedule_expr = Column(String, nullable=False)  # cron expr, seconds, or ISO timestamp
+    timezone = Column(String, nullable=False, default="UTC")
+    prompt = Column(Text, nullable=False)
+    channel_id = Column(String, nullable=False, default="")
+    enabled = Column(Boolean, nullable=False, default=True)
+    last_run_at = Column(DateTime(timezone=True), nullable=True)
+    last_run_status = Column(String, nullable=True)  # "success" | "error"
+    last_run_error = Column(Text, nullable=True)
+    next_run_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False)
+    updated_at = Column(DateTime(timezone=True), nullable=False)
+    metadata_json = Column(Text, nullable=False, default="{}")
+
+
 class ThreadMetaRecord(Base):
     __tablename__ = "thread_meta"
 
