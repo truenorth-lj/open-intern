@@ -9,7 +9,7 @@ from pathlib import Path
 
 import yaml
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from core.config import AppConfig, IdentityConfig, LLMConfig
 from memory.store import MemoryRecord, MemoryScope, MemoryStore, ThreadMetaRecord
@@ -490,6 +490,134 @@ def get_skill(skill_name: str, agent_id: str = ""):
         if s["name"] == skill_name:
             return s
     raise HTTPException(status_code=404, detail=f"Skill '{skill_name}' not found")
+
+
+# --- Scheduled Jobs ---
+
+
+def _get_scheduler():
+    from server import get_cron_scheduler
+
+    return get_cron_scheduler()
+
+
+_VALID_SCHEDULE_TYPES = {"cron", "interval", "once"}
+
+
+class ScheduledJobCreate(BaseModel):
+    agent_id: str
+    name: str
+    schedule_type: str  # "cron" | "interval" | "once"
+    schedule_expr: str
+    prompt: str
+    timezone: str = "UTC"
+    channel_id: str = ""
+
+    @field_validator("schedule_type")
+    @classmethod
+    def check_schedule_type(cls, v: str) -> str:
+        if v not in _VALID_SCHEDULE_TYPES:
+            raise ValueError("schedule_type must be 'cron', 'interval', or 'once'")
+        return v
+
+
+class ScheduledJobUpdate(BaseModel):
+    name: str | None = None
+    schedule_type: str | None = None
+    schedule_expr: str | None = None
+    timezone: str | None = None
+    prompt: str | None = None
+    channel_id: str | None = None
+    enabled: bool | None = None
+
+    @field_validator("schedule_type")
+    @classmethod
+    def check_schedule_type(cls, v: str | None) -> str | None:
+        if v is not None and v not in _VALID_SCHEDULE_TYPES:
+            raise ValueError("schedule_type must be 'cron', 'interval', or 'once'")
+        return v
+
+
+@router.get("/scheduled-jobs")
+def list_scheduled_jobs(agent_id: str = ""):
+    scheduler = _get_scheduler()
+    jobs = scheduler.list_jobs(agent_id=agent_id or None)
+    return {"jobs": jobs}
+
+
+@router.post("/scheduled-jobs")
+async def create_scheduled_job(body: ScheduledJobCreate):
+    scheduler = _get_scheduler()
+    try:
+        result = await scheduler.add_job(
+            agent_id=body.agent_id,
+            name=body.name,
+            schedule_type=body.schedule_type,
+            schedule_expr=body.schedule_expr,
+            prompt=body.prompt,
+            tz=body.timezone,
+            channel_id=body.channel_id,
+        )
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/scheduled-jobs/{job_id}")
+def get_scheduled_job(job_id: str):
+    scheduler = _get_scheduler()
+    job = scheduler.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return job
+
+
+@router.put("/scheduled-jobs/{job_id}")
+async def update_scheduled_job(job_id: str, body: ScheduledJobUpdate):
+    scheduler = _get_scheduler()
+    updates = {k: v for k, v in body.model_dump().items() if v is not None}
+    if not updates:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    result = await scheduler.update_job(job_id, **updates)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return result
+
+
+@router.delete("/scheduled-jobs/{job_id}")
+async def delete_scheduled_job(job_id: str):
+    scheduler = _get_scheduler()
+    removed = await scheduler.remove_job(job_id)
+    if not removed:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return {"ok": True}
+
+
+@router.post("/scheduled-jobs/{job_id}/pause")
+async def pause_scheduled_job(job_id: str):
+    scheduler = _get_scheduler()
+    paused = await scheduler.pause_job(job_id)
+    if not paused:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return {"ok": True, "status": "paused"}
+
+
+@router.post("/scheduled-jobs/{job_id}/resume")
+async def resume_scheduled_job(job_id: str):
+    scheduler = _get_scheduler()
+    resumed = await scheduler.resume_job(job_id)
+    if not resumed:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return {"ok": True, "status": "resumed"}
+
+
+@router.post("/scheduled-jobs/{job_id}/trigger")
+async def trigger_scheduled_job(job_id: str):
+    scheduler = _get_scheduler()
+    triggered = await scheduler.trigger_job(job_id)
+    if not triggered:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return {"ok": True, "status": "triggered"}
 
 
 # --- Helpers ---

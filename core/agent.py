@@ -134,11 +134,13 @@ class OpenInternAgent:
         agent_id: str = "default",
         sandbox_enabled: bool = True,
         e2b_sandbox_id: str = "",
+        extra_tools: list | None = None,
     ):
         self.config = config
         self.agent_id = agent_id
         self.sandbox_enabled = sandbox_enabled
         self.e2b_sandbox_id = e2b_sandbox_id
+        self.extra_tools = extra_tools or []
         self.memory_store = MemoryStore(config.database_url, agent_id=agent_id)
         self.safety = SafetyMiddleware(config)
         self._agent = None
@@ -165,8 +167,9 @@ class OpenInternAgent:
         # Build system prompt with identity
         system_prompt = build_system_prompt(self.config)
 
-        # Create memory tools
+        # Create memory tools + any extra tools (e.g., scheduler)
         memory_tools = create_memory_tools(self.memory_store)
+        all_tools = memory_tools + self.extra_tools
 
         # Create checkpointer for conversation threading (persisted to PostgreSQL)
         from langgraph.checkpoint.postgres import PostgresSaver
@@ -226,7 +229,7 @@ class OpenInternAgent:
 
         self._agent = create_deep_agent(
             model=llm,
-            tools=memory_tools,
+            tools=all_tools,
             system_prompt=system_prompt,
             checkpointer=self._checkpointer,
             store=self._postgres_store,
