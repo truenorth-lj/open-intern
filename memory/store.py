@@ -9,6 +9,7 @@ from enum import Enum
 from typing import Any
 from uuid import uuid4
 
+import sqlalchemy
 from pydantic import BaseModel, Field
 from sqlalchemy import (
     Boolean,
@@ -104,11 +105,13 @@ class MemoryStore:
     """Persistent memory store with 3-layer isolation and per-agent scoping."""
 
     def __init__(self, database_url: str, agent_id: str = "default"):
-        # Use psycopg (v3) driver instead of psycopg2
-        if database_url.startswith("postgresql://"):
-            database_url = database_url.replace("postgresql://", "postgresql+psycopg://", 1)
+        # Use default psycopg2 driver (not psycopg v3) to avoid
+        # prepared statement caching conflicts with LangGraph
+        sa_url = database_url
+        if sa_url.startswith("postgresql+psycopg://"):
+            sa_url = sa_url.replace("postgresql+psycopg://", "postgresql://", 1)
         self.engine = create_engine(
-            database_url,
+            sa_url,
             pool_size=5,
             max_overflow=10,
             pool_pre_ping=True,
@@ -117,29 +120,41 @@ class MemoryStore:
         self.agent_id = agent_id
 
     def initialize(self) -> None:
-        """Create tables if needed and verify database connection."""
-        Base.metadata.create_all(self.engine)
+        """Verify database connection. Tables managed by Alembic migrations."""
+        # Verify connection works
+        with self.engine.connect() as conn:
+            conn.execute(sqlalchemy.text("SELECT 1"))
         logger.info("Memory store initialized")
 
     def _session(self) -> Session:
         return self._session_factory()
 
     def store(self, entry: MemoryEntry) -> None:
-        """Store a memory entry."""
-        record = MemoryRecord(
-            id=entry.id,
-            agent_id=self.agent_id,
-            content=entry.content,
-            scope=entry.scope.value,
-            scope_id=entry.scope_id,
-            source=entry.source,
-            importance=entry.importance,
-            created_at=entry.created_at,
-            metadata_json=json.dumps(entry.metadata),
-        )
-        with self._session() as session:
-            session.merge(record)
-            session.commit()
+        """Store a memory entry using raw SQL to avoid psycopg3/LangGraph conflicts."""
+        with self.engine.connect() as conn:
+            conn.execute(
+                sqlalchemy.text(
+                    "INSERT INTO memories "
+                    "(id, agent_id, content, scope, scope_id, source, "
+                    "importance, created_at, metadata_json) "
+                    "VALUES (:id, :agent_id, :content, :scope, :scope_id, "
+                    ":source, :importance, :created_at, :metadata_json) "
+                    "ON CONFLICT (id) DO UPDATE SET "
+                    "content = :content, importance = :importance"
+                ),
+                {
+                    "id": entry.id,
+                    "agent_id": self.agent_id,
+                    "content": entry.content,
+                    "scope": entry.scope.value,
+                    "scope_id": entry.scope_id,
+                    "source": entry.source,
+                    "importance": entry.importance,
+                    "created_at": entry.created_at,
+                    "metadata_json": json.dumps(entry.metadata),
+                },
+            )
+            conn.commit()
 
     def recall(
         self,

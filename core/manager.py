@@ -10,7 +10,7 @@ from sqlalchemy.orm import sessionmaker
 
 from core.agent import OpenInternAgent
 from core.config import AppConfig, IdentityConfig, LLMConfig
-from memory.store import AgentRecord, Base
+from memory.store import AgentRecord
 
 logger = logging.getLogger(__name__)
 
@@ -24,14 +24,19 @@ class AgentManager:
 
         # DB connection for agent registry
         db_url = config.database_url
-        if db_url.startswith("postgresql://"):
-            db_url = db_url.replace("postgresql://", "postgresql+psycopg://", 1)
-        self._engine = create_engine(db_url, pool_size=5, max_overflow=10, pool_pre_ping=True)
+        # Use psycopg2 (default) to avoid psycopg3 conflicts with LangGraph
+        if db_url.startswith("postgresql+psycopg://"):
+            db_url = db_url.replace("postgresql+psycopg://", "postgresql://", 1)
+        self._engine = create_engine(
+            db_url,
+            pool_size=5,
+            max_overflow=10,
+            pool_pre_ping=True,
+        )
         self._session_factory = sessionmaker(bind=self._engine)
 
     def initialize(self) -> None:
-        """Create tables and load all active agents from DB."""
-        Base.metadata.create_all(self._engine)
+        """Load all active agents from DB. Tables managed by Alembic migrations."""
         self._load_agents()
 
     def _load_agents(self) -> None:
@@ -63,12 +68,14 @@ class AgentManager:
             personality=rec.personality,
             avatar_url=rec.avatar_url,
         ).model_dump()
+        # Preserve existing api_key from global config
+        existing_llm_key = base.get("llm", {}).get("api_key", "")
         base["llm"] = LLMConfig(
             provider=rec.llm_provider,
             model=rec.llm_model,
             temperature=rec.llm_temperature,
+            api_key=existing_llm_key,
         ).model_dump()
-        # Preserve API keys from global config
         return AppConfig(**base)
 
     def get(self, agent_id: str) -> OpenInternAgent | None:

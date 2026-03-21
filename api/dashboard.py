@@ -228,19 +228,37 @@ def _save_thread_meta(thread_id: str, title: str, created_at: str = "", agent_id
 
 
 def _load_thread_meta():
-    """Load thread metadata from DB (uses default agent's memory store)."""
-    try:
-        store = _get_memory_store()
-    except Exception:
+    """Load thread metadata from DB. Gracefully handles missing agent_id column."""
+    if _config is None:
         return
     try:
-        with store._session() as session:
-            for row in session.query(ThreadMetaRecord).all():
-                _thread_meta[row.thread_id] = {
-                    "title": row.title,
-                    "created_at": row.created_at,
-                    "agent_id": getattr(row, "agent_id", "default"),
+        import psycopg
+        from psycopg.rows import dict_row
+
+        with psycopg.connect(_config.database_url, autocommit=True, row_factory=dict_row) as conn:
+            # Check if agent_id column exists
+            cols = conn.execute(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_name='thread_meta' AND column_name='agent_id'"
+            ).fetchall()
+            has_agent_id = len(cols) > 0
+
+            if has_agent_id:
+                rows = conn.execute(
+                    "SELECT thread_id, title, created_at, agent_id FROM thread_meta"
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT thread_id, title, created_at FROM thread_meta"
+                ).fetchall()
+
+            for row in rows:
+                _thread_meta[row["thread_id"]] = {
+                    "title": row["title"],
+                    "created_at": row["created_at"],
+                    "agent_id": row.get("agent_id", "default"),
                 }
+            logger.info(f"Loaded {len(rows)} thread metadata entries")
     except Exception as e:
         logger.warning(f"Failed to load thread metadata: {e}")
 
