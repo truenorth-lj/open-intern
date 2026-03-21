@@ -181,6 +181,13 @@ class OpenInternAgent:
         self._postgres_store.setup()
         logger.info("PostgresStore ready")
 
+        # Seed skills from disk into PostgresStore
+        from scripts.seed_skills import seed_skills
+
+        n = seed_skills(self._postgres_store)
+        if n:
+            logger.info(f"Seeded {n} skill file(s) into store")
+
         # Create backend: CompositeBackend
         # - Files (read/write/edit/grep/glob) → StoreBackend → PostgreSQL (persistent)
         # - Shell execution (execute) → LocalShellBackend → container local

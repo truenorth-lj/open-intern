@@ -44,3 +44,14 @@ export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
 }
+
+export interface Skill {
+  name: string;
+  description: string;
+  files: { path: string; modified_at: string }[];
+  modified_at: string;
+  allowed_tools?: string;
+  category?: string;
+  version?: string;
+  content?: string;
+}

@@ -330,6 +330,36 @@ def delete_memory(memory_id: str):
     return {"ok": True}
 
 
+# --- Skills ---
+
+
+@router.get("/skills")
+def list_skills():
+    """List all agent skills stored in PostgresStore."""
+    if _agent is None or not _agent.is_initialized or _agent._postgres_store is None:
+        raise HTTPException(status_code=503, detail="Agent not initialized")
+
+    from scripts.seed_skills import list_skills as _list_skills
+
+    skills = _list_skills(_agent._postgres_store)
+    return {"skills": skills}
+
+
+@router.get("/skills/{skill_name}")
+def get_skill(skill_name: str):
+    """Get a single skill's details by name."""
+    if _agent is None or not _agent.is_initialized or _agent._postgres_store is None:
+        raise HTTPException(status_code=503, detail="Agent not initialized")
+
+    from scripts.seed_skills import list_skills as _list_skills
+
+    skills = _list_skills(_agent._postgres_store)
+    for s in skills:
+        if s["name"] == skill_name:
+            return s
+    raise HTTPException(status_code=404, detail=f"Skill '{skill_name}' not found")
+
+
 # --- Helpers ---
 
 

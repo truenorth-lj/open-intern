@@ -10,6 +10,8 @@ async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
   return res;
 }
 
+import type { Skill } from "./types";
+
 export async function getStatus() {
   const res = await apiFetch("/status");
   if (!res.ok) throw new Error("Failed to fetch status");
@@ -96,6 +98,18 @@ export async function getMemories(scope?: string, limit = 50, offset = 0) {
 export async function getMemoryStats() {
   const res = await apiFetch("/memories/stats");
   if (!res.ok) throw new Error("Failed to fetch memory stats");
+  return res.json();
+}
+
+export async function getSkills(): Promise<{ skills: Skill[] }> {
+  const res = await apiFetch("/skills");
+  if (!res.ok) throw new Error("Failed to fetch skills");
+  return res.json();
+}
+
+export async function getSkill(name: string): Promise<Skill> {
+  const res = await apiFetch(`/skills/${name}`);
+  if (!res.ok) throw new Error("Failed to fetch skill");
   return res.json();
 }
 
