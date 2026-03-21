@@ -279,7 +279,7 @@ class OpenInternAgent:
 
     async def chat(
         self, message: str, context: dict[str, Any] | None = None, thread_id: str | None = None
-    ) -> str:
+    ) -> tuple[str, dict[str, int]]:
         """Send a message to the agent and get a response.
 
         Args:
@@ -288,7 +288,7 @@ class OpenInternAgent:
             thread_id: Optional thread ID for conversation continuity.
 
         Returns:
-            The agent's response text.
+            Tuple of (response text, token usage dict).
         """
         if self._agent is None:
             raise RuntimeError("Agent not initialized. Call initialize() first.")
