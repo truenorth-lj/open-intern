@@ -1,3 +1,4 @@
+import logging
 import os
 from logging.config import fileConfig
 
@@ -5,6 +6,8 @@ from sqlalchemy import engine_from_config, pool
 
 from alembic import context
 from memory.store import Base
+
+logger = logging.getLogger(__name__)
 
 config = context.config
 
@@ -19,8 +22,8 @@ if not db_url:
 
         app_config = load_config()
         db_url = app_config.database_url
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("Could not load app config for DB URL: %s", e)
 if db_url:
     # Normalise to psycopg2 driver (same as MemoryStore)
     if db_url.startswith("postgresql+psycopg://"):
