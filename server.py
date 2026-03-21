@@ -91,6 +91,23 @@ async def run_discord(config: AppConfig, agent: OpenInternAgent) -> None:
     await bot.start()
 
 
+async def run_telegram(app: FastAPI, config: AppConfig, agent: OpenInternAgent) -> None:
+    """Run the Telegram bot alongside the web dashboard."""
+    import asyncio
+
+    import uvicorn
+
+    from integrations.telegram.bot import TelegramBot
+
+    bot = TelegramBot(agent, config)
+
+    server_config = uvicorn.Config(app, host="0.0.0.0", port=_get_port(), log_level="info")
+    server = uvicorn.Server(server_config)
+
+    # Run both the web server and telegram bot concurrently
+    await asyncio.gather(server.serve(), bot.start())
+
+
 async def run_web_only(app: FastAPI) -> None:
     """Run only the web dashboard API (no chat platform)."""
     import uvicorn
@@ -134,6 +151,8 @@ async def run_agent(config_path: str | None = None) -> None:
     elif platform == "web":
         logger.info("Running in web-only mode (dashboard API on port 8000)")
         await run_web_only(app)
+    elif platform == "telegram":
+        await run_telegram(app, config, agent)
     elif platform == "slack":
         logger.error("Slack integration not yet implemented. Use lark, discord, or web.")
         sys.exit(1)

@@ -9,11 +9,13 @@ identity:
   avatar_url: ""
 
 platform:
-  primary: "lark" # lark | discord | slack
+  primary: "lark" # lark | discord | slack | telegram | web
   lark:
     app_id: ""
     app_secret: ""
   discord:
+    bot_token: ""
+  telegram:
     bot_token: ""
   # slack:
   #   bot_token: ""

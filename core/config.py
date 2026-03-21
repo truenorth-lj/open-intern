@@ -30,11 +30,16 @@ class SlackConfig(BaseModel):
     app_token: str = ""
 
 
+class TelegramConfig(BaseModel):
+    bot_token: str = ""
+
+
 class PlatformConfig(BaseModel):
     primary: str = "lark"
     lark: LarkConfig = Field(default_factory=LarkConfig)
     discord: DiscordConfig = Field(default_factory=DiscordConfig)
     slack: SlackConfig = Field(default_factory=SlackConfig)
+    telegram: TelegramConfig = Field(default_factory=TelegramConfig)
 
 
 class LLMConfig(BaseModel):
