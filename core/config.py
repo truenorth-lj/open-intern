@@ -142,7 +142,10 @@ class AppConfig(BaseSettings):
 
 
 def load_config(path: str | Path | None = None) -> AppConfig:
-    """Load config from YAML file, then let pydantic-settings overlay env vars."""
+    """Load config from YAML, then let pydantic-settings overlay env vars.
+
+    Priority (highest wins): env vars / .env > YAML > field defaults.
+    """
     search_paths = [
         Path(path) if path else None,
         Path("config/agent.yaml"),

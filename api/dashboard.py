@@ -71,14 +71,11 @@ def get_config():
     if data.get("discord_bot_token"):
         data["discord_bot_token"] = "***"
     pc = data.get("platform_config", {})
-    if pc.get("lark", {}).get("app_secret"):
-        pc["lark"]["app_secret"] = "***"
-    if pc.get("discord", {}).get("bot_token"):
-        pc["discord"]["bot_token"] = "***"
-    if pc.get("slack", {}).get("bot_token"):
-        pc["slack"]["bot_token"] = "***"
-    if pc.get("slack", {}).get("app_token"):
-        pc["slack"]["app_token"] = "***"
+    for platform_name in ("lark", "discord", "slack", "telegram"):
+        platform_data = pc.get(platform_name, {})
+        for secret_field in ("app_secret", "bot_token", "app_token"):
+            if platform_data.get(secret_field):
+                platform_data[secret_field] = "***"
     return data
 
 

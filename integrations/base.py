@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 from abc import ABC, abstractmethod
 from typing import Any
 
 from core.agent import OpenInternAgent
+
+logger = logging.getLogger(__name__)
 
 
 class ChatEvent:
@@ -77,6 +80,8 @@ class Integration(ABC):
         # Let the agent process it
         # Use channel_id as thread_id for conversation continuity
         thread_id = event.thread_id or event.channel_id
+        if not thread_id:
+            logger.warning(f"No thread_id or channel_id for event from {event.platform}")
         response = self.agent.chat(event.content, context=event.to_context(), thread_id=thread_id)
 
         # Send response back
