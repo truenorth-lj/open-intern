@@ -13,11 +13,13 @@ from fastapi.responses import JSONResponse
 from core.agent import OpenInternAgent
 from core.config import AppConfig, load_config
 from core.manager import AgentManager
+from core.scheduler import CronScheduler
 
 logger = logging.getLogger(__name__)
 
 # Global state
 _agent_manager: AgentManager | None = None
+_cron_scheduler: CronScheduler | None = None
 # Legacy single-agent reference (for backward compat with dashboard)
 _default_agent: OpenInternAgent | None = None
 # Telegram bots keyed by agent_id
@@ -28,6 +30,12 @@ def get_agent_manager() -> AgentManager:
     if _agent_manager is None:
         raise RuntimeError("Agent manager not initialized")
     return _agent_manager
+
+
+def get_cron_scheduler() -> CronScheduler:
+    if _cron_scheduler is None:
+        raise RuntimeError("Cron scheduler not initialized")
+    return _cron_scheduler
 
 
 def get_agent(agent_id: str | None = None) -> OpenInternAgent:
@@ -129,10 +137,12 @@ def create_app(config: AppConfig, config_path: str) -> FastAPI:
         mgr = _agent_manager
         agent_count = len(mgr.agents) if mgr else 0
         bot_count = len(_telegram_bots)
+        scheduled_jobs = len(_cron_scheduler.list_jobs()) if _cron_scheduler else 0
         return {
             "status": "ok",
             "agents": agent_count,
             "telegram_bots": bot_count,
+            "scheduled_jobs": scheduled_jobs,
         }
 
     return app
@@ -211,7 +221,7 @@ async def run_web_only(app: FastAPI, config: AppConfig) -> None:
 
 async def run_agent(config_path: str | None = None) -> None:
     """Main entry point — initialize agent manager and run on configured platform."""
-    global _agent_manager, _default_agent
+    global _agent_manager, _default_agent, _cron_scheduler
 
     config = load_config(config_path)
 
@@ -225,18 +235,29 @@ async def run_agent(config_path: str | None = None) -> None:
     platform = config.active_platform
     logger.info(f"Starting open_intern (platform: {platform})")
 
-    # Initialize agent manager (loads all agents from DB)
-    manager = AgentManager(config)
+    # Create scheduler (lightweight — no jobs loaded yet)
+    scheduler = CronScheduler(config.database_url)
+    _cron_scheduler = scheduler
+
+    # Initialize agent manager (loads all agents from DB, with scheduler tools)
+    manager = AgentManager(config, scheduler=scheduler)
     manager.initialize()
     _agent_manager = manager
 
     # If no agents in DB, create a default agent from config (backward compat)
     if not manager.agents:
         logger.info("No agents in DB — creating default agent from config")
-        agent = OpenInternAgent(config, agent_id="default")
+        from core.scheduler import create_scheduler_tools
+
+        extra_tools = create_scheduler_tools(scheduler, "default")
+        agent = OpenInternAgent(config, agent_id="default", extra_tools=extra_tools)
         agent.initialize()
         _default_agent = agent
         manager._agents["default"] = agent
+
+    # Now start the scheduler (loads jobs from DB and begins execution)
+    scheduler.initialize(manager)
+    _cron_scheduler = scheduler
 
     # Create the FastAPI app
     app = create_app(config, config_path or "config/agent.yaml")

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -12,15 +13,19 @@ from core.agent import OpenInternAgent
 from core.config import AppConfig, IdentityConfig, LLMConfig
 from memory.store import AgentRecord
 
+if TYPE_CHECKING:
+    from core.scheduler import CronScheduler
+
 logger = logging.getLogger(__name__)
 
 
 class AgentManager:
     """Manages lifecycle of multiple OpenInternAgent instances backed by DB."""
 
-    def __init__(self, config: AppConfig):
+    def __init__(self, config: AppConfig, scheduler: CronScheduler | None = None):
         self.config = config
         self._agents: dict[str, OpenInternAgent] = {}
+        self._scheduler = scheduler
 
         # DB connection for agent registry
         db_url = config.database_url
@@ -53,11 +58,19 @@ class AgentManager:
     def _init_agent_from_record(self, rec: AgentRecord) -> OpenInternAgent:
         """Create and initialize an OpenInternAgent from a DB record."""
         agent_config = self._build_agent_config(rec)
+
+        extra_tools: list = []
+        if self._scheduler:
+            from core.scheduler import create_scheduler_tools
+
+            extra_tools = create_scheduler_tools(self._scheduler, rec.agent_id)
+
         agent = OpenInternAgent(
             agent_config,
             agent_id=rec.agent_id,
             sandbox_enabled=rec.sandbox_enabled,
             e2b_sandbox_id=rec.e2b_sandbox_id,
+            extra_tools=extra_tools,
         )
         agent.initialize()
         # Persist E2B sandbox ID back to DB if newly created
