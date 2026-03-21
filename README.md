@@ -169,7 +169,7 @@ open_intern/
 │   ├── main.py               # CLI entry point
 │   ├── setup.py              # Interactive setup wizard
 │   └── monitor.py            # Status, logs, cost tracking
-├── docker-compose.yml        # PostgreSQL + Redis + Agent
+├── docker-compose.yml        # PostgreSQL + Agent
 ├── RESEARCH.md               # Deep product research and analysis
 └── README.md                 # This file
 ```
@@ -183,7 +183,7 @@ open_intern/
 | Language | Python 3.11+ | Largest AI/ML ecosystem, most contributors |
 | LLM | Claude / OpenAI / Ollama (pluggable) | Flexibility, local model support for privacy |
 | Memory DB | PostgreSQL + pgvector | Structured data + vector search in one DB |
-| Task Queue | Celery + Redis | Heartbeat scheduling, background processing |
+| Task Queue | APScheduler | Heartbeat scheduling, background processing |
 | Chat (Primary) | Lark (Feishu) Open API | Rich bot API, widely used in Asia-Pacific teams |
 | Chat (Secondary) | discord.py | Massive developer community, easy bot setup |
 | Chat (Tertiary) | Slack Bolt SDK | Enterprise standard, lower priority |
