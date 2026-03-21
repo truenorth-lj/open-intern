@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import logging
+import os
 import sys
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from core.agent import OpenInternAgent
 from core.config import AppConfig, load_config
@@ -27,14 +29,27 @@ def create_app(config: AppConfig, agent: OpenInternAgent, config_path: str) -> F
     """Create the FastAPI app with dashboard API and platform webhooks."""
     app = FastAPI(title=f"open_intern - {config.identity.name}")
 
-    # CORS for Next.js dev server
+    # CORS for Next.js dev server and Zeabur frontend
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["http://localhost:3000"],
+        allow_origins=["http://localhost:3000", "https://open-intern.zeabur.app"],
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    # API key authentication middleware
+    api_secret = os.environ.get("API_SECRET_KEY", "")
+
+    @app.middleware("http")
+    async def check_api_key(request: Request, call_next):
+        # Skip auth for health endpoint and if no secret is configured
+        if not api_secret or request.url.path == "/health":
+            return await call_next(request)
+        key = request.headers.get("X-API-Key", "")
+        if key != api_secret:
+            return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
+        return await call_next(request)
 
     # Mount dashboard API
     from api.dashboard import init_dashboard
