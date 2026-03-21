@@ -14,7 +14,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Wrong password" }, { status: 401 });
   }
 
-  const token = makeToken(password, getAuthSecret());
+  let token: string;
+  try {
+    token = makeToken(password, getAuthSecret());
+  } catch {
+    return NextResponse.json({ error: "Server misconfiguration: AUTH_SECRET not set" }, { status: 500 });
+  }
   const cookieStore = await cookies();
   cookieStore.set("oi_session", token, {
     httpOnly: true,
