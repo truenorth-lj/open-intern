@@ -73,9 +73,8 @@ class MemoryStore:
         self._session_factory = sessionmaker(bind=self.engine)
 
     def initialize(self) -> None:
-        """Verify database connection. Tables are managed by alembic migrations."""
-        with self.engine.connect() as conn:
-            conn.execute(Base.metadata.tables["memories"].select().limit(0))
+        """Create tables if needed and verify database connection."""
+        Base.metadata.create_all(self.engine)
         logger.info("Memory store initialized")
 
     def _session(self) -> Session:
