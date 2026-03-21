@@ -85,7 +85,7 @@ export default function ThreadPage({
           )}
           {messages.map((msg, i) => (
             <div
-              key={i}
+              key={`${msg.role}-${i}`}
               className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
             >
               <Card

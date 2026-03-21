@@ -148,8 +148,8 @@ def _load_thread_meta():
             with _memory_store._session() as session:
                 for row in session.query(ThreadMetaRecord).all():
                     _thread_meta[row.thread_id] = {"title": row.title, "created_at": row.created_at}
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Failed to load thread metadata: {e}")
 
 
 class ChatRequest(BaseModel):
@@ -194,7 +194,7 @@ async def chat(body: ChatRequest):
 
 def _generate_thread_title(user_message: str, agent_response: str) -> str:
     """Use the LLM to generate a short thread title."""
-    if _agent is None or _agent._agent is None:
+    if _agent is None or not _agent.is_initialized:
         return user_message[:40]
     try:
         from core.agent import _create_llm
@@ -223,7 +223,7 @@ def _generate_thread_title(user_message: str, agent_response: str) -> str:
 @router.get("/threads")
 def list_threads():
     """List all conversation threads with titles."""
-    if _agent is None or _agent._checkpointer is None:
+    if _agent is None or not _agent.is_initialized:
         return {"threads": []}
     # Query distinct thread_ids from the checkpoints table
     conn = _agent._checkpoint_conn
@@ -267,7 +267,7 @@ def update_thread_title(thread_id: str, body: ThreadTitleUpdate):
 @router.delete("/threads/{thread_id}")
 def delete_thread(thread_id: str):
     """Delete a conversation thread."""
-    if _agent is None or _agent._checkpointer is None:
+    if _agent is None or not _agent.is_initialized:
         raise HTTPException(status_code=503, detail="Agent not initialized")
     conn = _agent._checkpoint_conn
     result = conn.execute("DELETE FROM checkpoints WHERE thread_id = %s", (thread_id,))
@@ -345,10 +345,13 @@ def _get_memory_stats() -> dict:
 
 
 def _save_config():
-    """Write current config back to YAML."""
+    """Write current config back to YAML (atomic: write temp file then rename)."""
     if _config is None:
         return
     path = Path(_config_path)
+    tmp_path = path.with_suffix(".yaml.tmp")
     data = _config.model_dump()
-    path.write_text(yaml.dump(data, default_flow_style=False, sort_keys=False, allow_unicode=True))
+    content = yaml.dump(data, default_flow_style=False, sort_keys=False, allow_unicode=True)
+    tmp_path.write_text(content)
+    tmp_path.replace(path)
     logger.info(f"Config saved to {path}")

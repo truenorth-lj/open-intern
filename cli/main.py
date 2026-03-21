@@ -76,14 +76,16 @@ def start(
         raise typer.Exit(1)
 
     if web:
-        # Override platform to web-only mode
+        # Override platform to web-only mode (atomic write)
         import yaml
 
         raw = yaml.safe_load(config_file.read_text()) or {}
         raw.setdefault("platform", {})["primary"] = "web"
-        config_file.write_text(
+        tmp_file = config_file.with_suffix(".yaml.tmp")
+        tmp_file.write_text(
             yaml.dump(raw, default_flow_style=False, sort_keys=False, allow_unicode=True)
         )
+        tmp_file.replace(config_file)
 
     console.print(
         Panel.fit(

@@ -1,15 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { createHash } from "crypto";
+import { makeToken, getAuthSecret } from "@/lib/auth";
 
-const AUTH_SECRET = process.env.AUTH_SECRET || "open_intern_default_secret";
 const DASHBOARD_PASSWORD = process.env.DASHBOARD_PASSWORD || "";
-
-function makeToken(password: string): string {
-  return createHash("sha256")
-    .update(password + AUTH_SECRET)
-    .digest("hex");
-}
 
 export async function POST(req: NextRequest) {
   if (!DASHBOARD_PASSWORD) {
@@ -21,7 +14,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Wrong password" }, { status: 401 });
   }
 
-  const token = makeToken(password);
+  const token = makeToken(password, getAuthSecret());
   const cookieStore = await cookies();
   cookieStore.set("oi_session", token, {
     httpOnly: true,

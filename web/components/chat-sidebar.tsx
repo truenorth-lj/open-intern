@@ -29,23 +29,28 @@ export function ChatSidebar() {
   const loadThreads = useCallback(() => {
     getThreads()
       .then((data) => setThreads(data.threads))
-      .catch(() => {});
+      .catch((err) => console.error("Failed to load threads:", err));
   }, []);
 
   useEffect(() => {
     loadThreads();
-    // Refresh thread list periodically
     const interval = setInterval(loadThreads, 5000);
     return () => clearInterval(interval);
   }, [loadThreads]);
 
-  // Expose refresh for parent
+  // Listen for custom event to refresh threads (from NewChatPage)
   useEffect(() => {
-    (window as unknown as Record<string, () => void>).__refreshThreads = loadThreads;
+    const handler = () => loadThreads();
+    document.addEventListener("oi:refresh-threads", handler);
+    return () => document.removeEventListener("oi:refresh-threads", handler);
   }, [loadThreads]);
 
   async function handleDelete(threadId: string) {
-    await deleteThread(threadId).catch(() => {});
+    try {
+      await deleteThread(threadId);
+    } catch (err) {
+      console.error("Failed to delete thread:", err);
+    }
     setThreads((prev) => prev.filter((t) => t.thread_id !== threadId));
     if (activeThreadId === threadId) {
       router.push("/chat");
@@ -59,7 +64,11 @@ export function ChatSidebar() {
 
   async function saveEdit(threadId: string) {
     if (editTitle.trim()) {
-      await updateThreadTitle(threadId, editTitle.trim()).catch(() => {});
+      try {
+        await updateThreadTitle(threadId, editTitle.trim());
+      } catch (err) {
+        console.error("Failed to update thread title:", err);
+      }
       setThreads((prev) =>
         prev.map((t) => (t.thread_id === threadId ? { ...t, title: editTitle.trim() } : t))
       );

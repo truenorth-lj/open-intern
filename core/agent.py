@@ -137,6 +137,11 @@ class OpenInternAgent:
         self._store_ctx = None
         self._postgres_store = None
 
+    @property
+    def is_initialized(self) -> bool:
+        """Whether the agent has been fully initialized."""
+        return self._agent is not None
+
     def initialize(self) -> None:
         """Initialize all subsystems and create the Deep Agent."""
         # Initialize memory

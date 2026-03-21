@@ -69,7 +69,12 @@ class MemoryStore:
         # Use psycopg (v3) driver instead of psycopg2
         if database_url.startswith("postgresql://"):
             database_url = database_url.replace("postgresql://", "postgresql+psycopg://", 1)
-        self.engine = create_engine(database_url)
+        self.engine = create_engine(
+            database_url,
+            pool_size=5,
+            max_overflow=10,
+            pool_pre_ping=True,
+        )
         self._session_factory = sessionmaker(bind=self.engine)
 
     def initialize(self) -> None:
