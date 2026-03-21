@@ -133,7 +133,7 @@ class CronScheduler:
             next_run = aps_job.next_run_time
 
         with self._engine.connect() as conn:
-            conn.execute(
+            result = conn.execute(
                 sqlalchemy.text(
                     "UPDATE scheduled_jobs SET "
                     "last_run_at = :last_run_at, "
@@ -153,6 +153,8 @@ class CronScheduler:
                 },
             )
             conn.commit()
+            if result.rowcount == 0:
+                logger.warning(f"Job {job_id} not found when updating status")
 
     async def add_job(
         self,
@@ -249,18 +251,25 @@ class CronScheduler:
         }
 
     async def remove_job(self, job_id: str) -> bool:
-        """Remove a job from DB and unschedule it."""
+        """Remove a job: unschedule first, then delete from DB."""
+        # Check existence
         with self._session_factory() as session:
             record = session.query(ScheduledJobRecord).filter_by(id=job_id).first()
             if not record:
                 return False
-            session.delete(record)
-            session.commit()
 
+        # Unschedule first (safe if not scheduled)
         try:
             self._scheduler.remove_job(job_id)
         except Exception:
-            pass  # job may not be scheduled (disabled or already removed)
+            pass
+
+        # Then delete from DB
+        with self._session_factory() as session:
+            record = session.query(ScheduledJobRecord).filter_by(id=job_id).first()
+            if record:
+                session.delete(record)
+                session.commit()
 
         logger.info(f"Removed scheduled job: {job_id}")
         return True
@@ -275,14 +284,13 @@ class CronScheduler:
             "prompt",
             "channel_id",
             "enabled",
-            "metadata_json",
         }
+        schedule_changed = False
         with self._session_factory() as session:
             record = session.query(ScheduledJobRecord).filter_by(id=job_id).first()
             if not record:
                 return None
 
-            schedule_changed = False
             for key, value in kwargs.items():
                 if key not in allowed:
                     continue
@@ -292,8 +300,7 @@ class CronScheduler:
 
             record.updated_at = datetime.now(timezone.utc)
             session.commit()
-            # Detach values we need
-            rec_copy = _snapshot_record(record)
+            result = self._job_to_dict(record)
 
         # Reschedule if needed
         if schedule_changed or "enabled" in kwargs:
@@ -301,14 +308,13 @@ class CronScheduler:
                 self._scheduler.remove_job(job_id)
             except Exception:
                 pass
-            if rec_copy["enabled"]:
-                # Re-read to build trigger
+            if result["enabled"]:
                 with self._session_factory() as session:
                     record = session.query(ScheduledJobRecord).filter_by(id=job_id).first()
                     if record:
                         self._schedule_job(record)
 
-        return rec_copy
+        return result
 
     async def pause_job(self, job_id: str) -> bool:
         """Disable a job."""
@@ -377,27 +383,6 @@ class CronScheduler:
             "updated_at": record.updated_at.isoformat() if record.updated_at else "",
             "metadata": json.loads(record.metadata_json) if record.metadata_json else {},
         }
-
-
-def _snapshot_record(record: ScheduledJobRecord) -> dict:
-    """Snapshot record values before session closes."""
-    return {
-        "id": record.id,
-        "agent_id": record.agent_id,
-        "name": record.name,
-        "schedule_type": record.schedule_type,
-        "schedule_expr": record.schedule_expr,
-        "timezone": record.timezone,
-        "prompt": record.prompt,
-        "channel_id": record.channel_id,
-        "enabled": record.enabled,
-        "last_run_at": record.last_run_at.isoformat() if record.last_run_at else None,
-        "last_run_status": record.last_run_status,
-        "last_run_error": record.last_run_error,
-        "next_run_at": record.next_run_at.isoformat() if record.next_run_at else None,
-        "created_at": record.created_at.isoformat() if record.created_at else "",
-        "updated_at": record.updated_at.isoformat() if record.updated_at else "",
-    }
 
 
 # --- Agent tools ---

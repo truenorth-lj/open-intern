@@ -9,7 +9,7 @@ from pathlib import Path
 
 import yaml
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from core.config import AppConfig, IdentityConfig, LLMConfig
 from memory.store import MemoryRecord, MemoryScope, MemoryStore, ThreadMetaRecord
@@ -501,6 +501,9 @@ def _get_scheduler():
     return get_cron_scheduler()
 
 
+_VALID_SCHEDULE_TYPES = {"cron", "interval", "once"}
+
+
 class ScheduledJobCreate(BaseModel):
     agent_id: str
     name: str
@@ -509,6 +512,13 @@ class ScheduledJobCreate(BaseModel):
     prompt: str
     timezone: str = "UTC"
     channel_id: str = ""
+
+    @field_validator("schedule_type")
+    @classmethod
+    def check_schedule_type(cls, v: str) -> str:
+        if v not in _VALID_SCHEDULE_TYPES:
+            raise ValueError("schedule_type must be 'cron', 'interval', or 'once'")
+        return v
 
 
 class ScheduledJobUpdate(BaseModel):
@@ -519,6 +529,13 @@ class ScheduledJobUpdate(BaseModel):
     prompt: str | None = None
     channel_id: str | None = None
     enabled: bool | None = None
+
+    @field_validator("schedule_type")
+    @classmethod
+    def check_schedule_type(cls, v: str | None) -> str | None:
+        if v is not None and v not in _VALID_SCHEDULE_TYPES:
+            raise ValueError("schedule_type must be 'cron', 'interval', or 'once'")
+        return v
 
 
 @router.get("/scheduled-jobs")
