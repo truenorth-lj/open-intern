@@ -113,12 +113,18 @@ def load_config(path: str | Path | None = None) -> AppConfig:
         Path.home() / ".open_intern" / "agent.yaml",
     ]
 
+    config = AppConfig()
     for p in search_paths:
         if p and p.exists():
             raw = yaml.safe_load(p.read_text())
-            return AppConfig.model_validate(raw or {})
+            config = AppConfig.model_validate(raw or {})
+            break
 
-    return AppConfig()
+    # Environment variables override YAML config
+    if db_url := os.environ.get("DATABASE_URL"):
+        config.memory.database_url = db_url
+
+    return config
 
 
 _config: AppConfig | None = None
