@@ -231,12 +231,14 @@ class E2BSandboxBackend(SandboxBackendProtocol):
     ) -> list[GrepMatch] | str:
         sbx = self._ensure_sandbox()
         try:
-            # Build grep command
+            # Build grep command with proper shell escaping
+            import shlex
+
             cmd_parts = ["grep", "-rn"]
             if glob:
-                cmd_parts.extend(["--include", glob])
-            cmd_parts.append(pattern)
-            cmd_parts.append(path or "/home/user")
+                cmd_parts.extend(["--include", shlex.quote(glob)])
+            cmd_parts.extend(["--", shlex.quote(pattern)])
+            cmd_parts.append(shlex.quote(path or "/home/user"))
 
             result = sbx.commands.run(" ".join(cmd_parts), timeout=30)
             stdout = result.stdout or ""
@@ -266,7 +268,12 @@ class E2BSandboxBackend(SandboxBackendProtocol):
     def glob_info(self, pattern: str, path: str = "/") -> list[FileInfo]:
         sbx = self._ensure_sandbox()
         try:
-            result = sbx.commands.run(f"find {path} -path '{pattern}' -type f", timeout=15)
+            import shlex
+
+            result = sbx.commands.run(
+                f"find {shlex.quote(path)} -path {shlex.quote(pattern)} -type f",
+                timeout=15,
+            )
             stdout = result.stdout or ""
             return [
                 FileInfo(path=p.strip(), is_dir=False) for p in stdout.splitlines() if p.strip()
