@@ -106,6 +106,23 @@ class ThreadMetaRecord(Base):
     user_id = Column(String, nullable=True, index=True)
 
 
+class TokenUsageRecord(Base):
+    """Per-request token usage tracking."""
+
+    __tablename__ = "token_usage"
+
+    id = Column(String, primary_key=True)
+    agent_id = Column(String, nullable=False, index=True)
+    thread_id = Column(String, nullable=False, index=True)
+    user_id = Column(String, nullable=False, default="", index=True)
+    input_tokens = Column(sqlalchemy.Integer, nullable=False, default=0)
+    output_tokens = Column(sqlalchemy.Integer, nullable=False, default=0)
+    total_tokens = Column(sqlalchemy.Integer, nullable=False, default=0)
+    created_at = Column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (Index("ix_token_usage_agent_thread", "agent_id", "thread_id"),)
+
+
 class UserRecord(Base):
     """Dashboard user account."""
 

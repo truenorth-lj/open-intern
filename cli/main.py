@@ -221,7 +221,7 @@ def chat(
         if user_input.strip().lower() in ("quit", "exit", "q"):
             break
 
-        response = asyncio.run(
+        response, _token_usage = asyncio.run(
             agent.chat(
                 user_input,
                 context={

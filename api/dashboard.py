@@ -13,7 +13,7 @@ from pydantic import BaseModel
 
 from api.auth import get_current_user, get_user_accessible_agents, require_admin
 from core.config import AppConfig, IdentityConfig, LLMConfig
-from memory.store import MemoryRecord, MemoryScope, MemoryStore, ThreadMetaRecord
+from memory.store import MemoryRecord, MemoryScope, MemoryStore, ThreadMetaRecord, TokenUsageRecord
 from scripts.seed_skills import list_skills as _list_skills
 
 logger = logging.getLogger(__name__)
@@ -301,6 +301,7 @@ class ChatResponse(BaseModel):
     thread_id: str
     title: str
     agent_id: str
+    token_usage: dict[str, int] = {}
 
 
 @router.post("/chat", response_model=ChatResponse)
@@ -320,7 +321,7 @@ async def chat(body: ChatRequest, user: dict = Depends(get_current_user)):
     is_new = not body.thread_id
     thread_id = body.thread_id or str(uuid4())
     user_name = user.get("email", "user").split("@")[0]
-    response = await agent.chat(
+    response, token_usage = await agent.chat(
         body.message,
         context={
             "platform": "web",
@@ -333,6 +334,11 @@ async def chat(body: ChatRequest, user: dict = Depends(get_current_user)):
     )
 
     user_id = user.get("user_id", "")
+
+    # Store token usage
+    if token_usage.get("total_tokens", 0) > 0:
+        _store_token_usage(agent_id, thread_id, user_id, token_usage)
+
     if is_new:
         title = _generate_thread_title(agent, body.message)
         _save_thread_meta(
@@ -341,7 +347,13 @@ async def chat(body: ChatRequest, user: dict = Depends(get_current_user)):
     else:
         title = _thread_meta.get(thread_id, {}).get("title", "")
 
-    return ChatResponse(response=response, thread_id=thread_id, title=title, agent_id=agent_id)
+    return ChatResponse(
+        response=response,
+        thread_id=thread_id,
+        title=title,
+        agent_id=agent_id,
+        token_usage=token_usage,
+    )
 
 
 def _generate_thread_title(agent, user_message: str) -> str:
@@ -541,6 +553,137 @@ def get_skill(skill_name: str, agent_id: str = "", user: dict = Depends(get_curr
         if s["name"] == skill_name:
             return s
     raise HTTPException(status_code=404, detail=f"Skill '{skill_name}' not found")
+
+
+# --- Token Usage ---
+
+
+def _store_token_usage(agent_id: str, thread_id: str, user_id: str, usage: dict[str, int]):
+    """Store a token usage record."""
+    from uuid import uuid4
+
+    store = _get_memory_store(agent_id)
+    with store._session() as session:
+        record = TokenUsageRecord(
+            id=str(uuid4()),
+            agent_id=agent_id,
+            thread_id=thread_id,
+            user_id=user_id,
+            input_tokens=usage.get("input_tokens", 0),
+            output_tokens=usage.get("output_tokens", 0),
+            total_tokens=usage.get("total_tokens", 0),
+            created_at=datetime.now(timezone.utc),
+        )
+        session.add(record)
+        session.commit()
+
+
+@router.get("/token-usage/thread/{thread_id}")
+def get_thread_token_usage(thread_id: str, user: dict = Depends(get_current_user)):
+    """Get total token usage for a specific thread."""
+    if _config is None:
+        raise HTTPException(status_code=503, detail="Not initialized")
+    from sqlalchemy import func
+
+    store = _get_memory_store()
+    with store._session() as session:
+        row = (
+            session.query(
+                func.coalesce(func.sum(TokenUsageRecord.input_tokens), 0).label("input_tokens"),
+                func.coalesce(func.sum(TokenUsageRecord.output_tokens), 0).label("output_tokens"),
+                func.coalesce(func.sum(TokenUsageRecord.total_tokens), 0).label("total_tokens"),
+                func.count(TokenUsageRecord.id).label("request_count"),
+            )
+            .filter(TokenUsageRecord.thread_id == thread_id)
+            .first()
+        )
+        return {
+            "thread_id": thread_id,
+            "input_tokens": row.input_tokens if row else 0,
+            "output_tokens": row.output_tokens if row else 0,
+            "total_tokens": row.total_tokens if row else 0,
+            "request_count": row.request_count if row else 0,
+        }
+
+
+@router.get("/token-usage/agent/{agent_id}")
+def get_agent_token_usage(agent_id: str, user: dict = Depends(get_current_user)):
+    """Get total token usage for a specific agent."""
+    if _config is None:
+        raise HTTPException(status_code=503, detail="Not initialized")
+    from sqlalchemy import func
+
+    store = _get_memory_store(agent_id)
+    with store._session() as session:
+        row = (
+            session.query(
+                func.coalesce(func.sum(TokenUsageRecord.input_tokens), 0).label("input_tokens"),
+                func.coalesce(func.sum(TokenUsageRecord.output_tokens), 0).label("output_tokens"),
+                func.coalesce(func.sum(TokenUsageRecord.total_tokens), 0).label("total_tokens"),
+                func.count(TokenUsageRecord.id).label("request_count"),
+            )
+            .filter(TokenUsageRecord.agent_id == agent_id)
+            .first()
+        )
+        return {
+            "agent_id": agent_id,
+            "input_tokens": row.input_tokens if row else 0,
+            "output_tokens": row.output_tokens if row else 0,
+            "total_tokens": row.total_tokens if row else 0,
+            "request_count": row.request_count if row else 0,
+        }
+
+
+@router.get("/token-usage/summary")
+def get_token_usage_summary(user: dict = Depends(get_current_user)):
+    """Get token usage summary for all agents, with per-agent breakdown."""
+    if _config is None:
+        raise HTTPException(status_code=503, detail="Not initialized")
+    from sqlalchemy import func
+
+    accessible = get_user_accessible_agents(user)
+    store = _get_memory_store()
+    with store._session() as session:
+        q = session.query(
+            TokenUsageRecord.agent_id,
+            func.coalesce(func.sum(TokenUsageRecord.input_tokens), 0).label("input_tokens"),
+            func.coalesce(func.sum(TokenUsageRecord.output_tokens), 0).label("output_tokens"),
+            func.coalesce(func.sum(TokenUsageRecord.total_tokens), 0).label("total_tokens"),
+            func.count(TokenUsageRecord.id).label("request_count"),
+        ).group_by(TokenUsageRecord.agent_id)
+
+        if accessible is not None:
+            q = q.filter(TokenUsageRecord.agent_id.in_(accessible))
+
+        agents = []
+        grand_input = 0
+        grand_output = 0
+        grand_total = 0
+        grand_requests = 0
+        for row in q.all():
+            agents.append(
+                {
+                    "agent_id": row.agent_id,
+                    "input_tokens": row.input_tokens,
+                    "output_tokens": row.output_tokens,
+                    "total_tokens": row.total_tokens,
+                    "request_count": row.request_count,
+                }
+            )
+            grand_input += row.input_tokens
+            grand_output += row.output_tokens
+            grand_total += row.total_tokens
+            grand_requests += row.request_count
+
+        return {
+            "agents": agents,
+            "total": {
+                "input_tokens": grand_input,
+                "output_tokens": grand_output,
+                "total_tokens": grand_total,
+                "request_count": grand_requests,
+            },
+        }
 
 
 # --- Helpers ---

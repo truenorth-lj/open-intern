@@ -332,10 +332,13 @@ class OpenInternAgent:
         # Extract response text
         response = self._extract_response(result)
 
+        # Extract token usage from result
+        token_usage = self._extract_token_usage(result)
+
         # Store conversation to memory
         self._store_conversation(message, response, context)
 
-        return response
+        return response, token_usage
 
     def _extract_response(self, result: Any) -> str:
         """Extract the final text response from agent result."""
@@ -382,6 +385,23 @@ class OpenInternAgent:
                     text_parts.append(block)
             return "\n".join(text_parts) if text_parts else str(content)
         return str(content)
+
+    @staticmethod
+    def _extract_token_usage(result: Any) -> dict[str, int]:
+        """Extract total token usage from all AI messages in the result."""
+        input_tokens = 0
+        output_tokens = 0
+        if isinstance(result, dict) and "messages" in result:
+            for msg in result["messages"]:
+                usage = getattr(msg, "usage_metadata", None)
+                if usage:
+                    input_tokens += usage.get("input_tokens", 0)
+                    output_tokens += usage.get("output_tokens", 0)
+        return {
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "total_tokens": input_tokens + output_tokens,
+        }
 
     def _store_conversation(
         self, user_message: str, response: str, context: dict[str, Any]

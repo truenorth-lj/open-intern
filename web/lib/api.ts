@@ -118,3 +118,21 @@ export async function deleteMemory(id: string) {
   if (!res.ok) throw new Error("Failed to delete memory");
   return res.json();
 }
+
+export async function getThreadTokenUsage(threadId: string) {
+  const res = await apiFetch(`/token-usage/thread/${threadId}`);
+  if (!res.ok) throw new Error("Failed to fetch token usage");
+  return res.json();
+}
+
+export async function getAgentTokenUsage(agentId: string) {
+  const res = await apiFetch(`/token-usage/agent/${agentId}`);
+  if (!res.ok) throw new Error("Failed to fetch token usage");
+  return res.json();
+}
+
+export async function getTokenUsageSummary() {
+  const res = await apiFetch("/token-usage/summary");
+  if (!res.ok) throw new Error("Failed to fetch token usage summary");
+  return res.json();
+}

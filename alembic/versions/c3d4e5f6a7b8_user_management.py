@@ -1,4 +1,4 @@
-"""Add users and user_agent_access tables for admin/user management.
+"""Add users, user_agent_access, and token_usage tables.
 
 Revision ID: c3d4e5f6a7b8
 Revises: b2c3d4e5f6a7
@@ -43,8 +43,31 @@ def upgrade() -> None:
     op.add_column("thread_meta", sa.Column("user_id", sa.String(), nullable=True))
     op.create_index("ix_thread_meta_user_id", "thread_meta", ["user_id"])
 
+    # Token usage tracking
+    op.create_table(
+        "token_usage",
+        sa.Column("id", sa.String(), nullable=False),
+        sa.Column("agent_id", sa.String(), nullable=False),
+        sa.Column("thread_id", sa.String(), nullable=False),
+        sa.Column("user_id", sa.String(), nullable=False, server_default=""),
+        sa.Column("input_tokens", sa.Integer(), nullable=False, server_default="0"),
+        sa.Column("output_tokens", sa.Integer(), nullable=False, server_default="0"),
+        sa.Column("total_tokens", sa.Integer(), nullable=False, server_default="0"),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.PrimaryKeyConstraint("id"),
+    )
+    op.create_index("ix_token_usage_agent_id", "token_usage", ["agent_id"])
+    op.create_index("ix_token_usage_thread_id", "token_usage", ["thread_id"])
+    op.create_index("ix_token_usage_user_id", "token_usage", ["user_id"])
+    op.create_index("ix_token_usage_agent_thread", "token_usage", ["agent_id", "thread_id"])
+
 
 def downgrade() -> None:
+    op.drop_index("ix_token_usage_agent_thread", table_name="token_usage")
+    op.drop_index("ix_token_usage_user_id", table_name="token_usage")
+    op.drop_index("ix_token_usage_thread_id", table_name="token_usage")
+    op.drop_index("ix_token_usage_agent_id", table_name="token_usage")
+    op.drop_table("token_usage")
     op.drop_index("ix_thread_meta_user_id", table_name="thread_meta")
     op.drop_column("thread_meta", "user_id")
     op.drop_index("ix_user_agent_access_agent", table_name="user_agent_access")
