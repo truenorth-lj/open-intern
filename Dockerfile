@@ -18,6 +18,6 @@ COPY . .
 RUN mkdir -p /app/logs && \
     cp config/agent.example.yaml config/agent.yaml
 
-EXPOSE 8000
+EXPOSE 8080
 
 CMD ["python", "-m", "cli.main", "start", "--web"]

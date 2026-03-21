@@ -56,6 +56,13 @@ def create_app(config: AppConfig, agent: OpenInternAgent, config_path: str) -> F
     return app
 
 
+def _get_port() -> int:
+    """Get the server port from PORT env var (set by Zeabur/Railway) or default 8000."""
+    import os
+
+    return int(os.environ.get("PORT", "8000"))
+
+
 async def run_lark(app: FastAPI, config: AppConfig, agent: OpenInternAgent) -> None:
     """Run the Lark bot with a webhook server."""
     import uvicorn
@@ -71,7 +78,7 @@ async def run_lark(app: FastAPI, config: AppConfig, agent: OpenInternAgent) -> N
         body = await request.json()
         return await handler(body)
 
-    server_config = uvicorn.Config(app, host="0.0.0.0", port=8000, log_level="info")
+    server_config = uvicorn.Config(app, host="0.0.0.0", port=_get_port(), log_level="info")
     server = uvicorn.Server(server_config)
     await server.serve()
 
@@ -88,7 +95,7 @@ async def run_web_only(app: FastAPI) -> None:
     """Run only the web dashboard API (no chat platform)."""
     import uvicorn
 
-    server_config = uvicorn.Config(app, host="0.0.0.0", port=8000, log_level="info")
+    server_config = uvicorn.Config(app, host="0.0.0.0", port=_get_port(), log_level="info")
     server = uvicorn.Server(server_config)
     await server.serve()
 
