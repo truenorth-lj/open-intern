@@ -16,11 +16,11 @@ class TelegramBot(Integration):
 
     def __init__(self, agent: OpenInternAgent, config: AppConfig):
         super().__init__(agent)
-        token = config.platform.telegram.bot_token
+        token = config.effective_telegram_token
         if not token.strip():
             raise ValueError(
-                "Telegram bot_token is required. Set it in config/agent.yaml "
-                "under platform.telegram.bot_token"
+                "Telegram bot_token is required. Set TELEGRAM_BOT_TOKEN in .env "
+                "or platform.telegram.bot_token in config/agent.yaml"
             )
         self.token = token
         self._app = None
@@ -94,7 +94,22 @@ class TelegramBot(Integration):
                 raw=update,
             )
 
-            await self.handle_event(event)
+            # Show "typing..." indicator while processing (re-send every 4s)
+            import asyncio
+
+            typing_active = True
+
+            async def keep_typing():
+                while typing_active:
+                    await message.chat.send_action("typing")
+                    await asyncio.sleep(4)
+
+            typing_task = asyncio.create_task(keep_typing())
+            try:
+                await self.handle_event(event)
+            finally:
+                typing_active = False
+                typing_task.cancel()
 
         app.add_handler(CommandHandler("start", on_start))
         app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_message))

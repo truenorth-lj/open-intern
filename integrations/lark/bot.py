@@ -23,8 +23,8 @@ class LarkBot(Integration):
 
     def __init__(self, agent: OpenInternAgent, config: AppConfig):
         super().__init__(agent)
-        self.app_id = config.platform.lark.app_id
-        self.app_secret = config.platform.lark.app_secret
+        self.app_id = config.platform_config.lark.app_id
+        self.app_secret = config.platform_config.lark.app_secret
         self._tenant_access_token: str = ""
         self._bot_id: str = ""
         self._running = False

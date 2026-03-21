@@ -16,7 +16,7 @@ class DiscordBot(Integration):
 
     def __init__(self, agent: OpenInternAgent, config: AppConfig):
         super().__init__(agent)
-        self.token = config.platform.discord.bot_token
+        self.token = config.effective_discord_token
         self._bot = None
         self._bot_id: str = ""
 

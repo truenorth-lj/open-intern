@@ -75,7 +75,9 @@ class Integration(ABC):
             return None
 
         # Let the agent process it
-        response = self.agent.chat(event.content, context=event.to_context())
+        # Use channel_id as thread_id for conversation continuity
+        thread_id = event.thread_id or event.channel_id
+        response = self.agent.chat(event.content, context=event.to_context(), thread_id=thread_id)
 
         # Send response back
         if response:

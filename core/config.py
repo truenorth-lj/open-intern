@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import yaml
 from pydantic import BaseModel, Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class IdentityConfig(BaseModel):
@@ -45,18 +45,13 @@ class PlatformConfig(BaseModel):
 class LLMConfig(BaseModel):
     provider: str = "claude"  # claude | openai | minimax | ollama
     model: str = "claude-sonnet-4-6"
-    api_key: str = ""  # optional; falls back to ANTHROPIC/OPENAI/MINIMAX_API_KEY env vars
+    api_key: str = ""  # optional; falls back to env vars
     temperature: float = 0.7
     max_tokens_per_action: int = 4096
     daily_cost_budget_usd: float = 10.0
 
 
 class MemoryConfig(BaseModel):
-    database_url: str = Field(
-        default_factory=lambda: os.environ.get(
-            "DATABASE_URL", "postgresql://open_intern:open_intern@localhost:5556/open_intern"
-        )
-    )
     embedding_model: str = "text-embedding-3-small"
     max_retrieval_results: int = 10
     importance_decay_days: int = 90
@@ -100,17 +95,54 @@ class SafetyConfig(BaseModel):
     )
 
 
-class AppConfig(BaseModel):
+class AppConfig(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_nested_delimiter="__",
+        extra="ignore",
+    )
+
+    # --- Environment variables (flat, auto-mapped from .env / os.environ) ---
+    database_url: str = "postgresql://open_intern:open_intern@localhost:5556/open_intern"
+    platform: str = ""  # overrides platform.primary when set
+    api_secret_key: str = ""
+    port: int = 8000
+
+    # API keys
+    anthropic_api_key: str = ""
+    openai_api_key: str = ""
+    minimax_api_key: str = ""
+
+    # Platform tokens (env var overrides YAML)
+    telegram_bot_token: str = ""
+    discord_bot_token: str = ""
+
+    # --- Nested configs (from YAML) ---
     identity: IdentityConfig = Field(default_factory=IdentityConfig)
-    platform: PlatformConfig = Field(default_factory=PlatformConfig)
+    platform_config: PlatformConfig = Field(default_factory=PlatformConfig)
     llm: LLMConfig = Field(default_factory=LLMConfig)
     memory: MemoryConfig = Field(default_factory=MemoryConfig)
     behavior: BehaviorConfig = Field(default_factory=BehaviorConfig)
     safety: SafetyConfig = Field(default_factory=SafetyConfig)
 
+    @property
+    def active_platform(self) -> str:
+        """Return the effective platform: env var > YAML config."""
+        return self.platform or self.platform_config.primary
+
+    @property
+    def effective_telegram_token(self) -> str:
+        """Return telegram token: env var > YAML config."""
+        return self.telegram_bot_token or self.platform_config.telegram.bot_token
+
+    @property
+    def effective_discord_token(self) -> str:
+        """Return discord token: env var > YAML config."""
+        return self.discord_bot_token or self.platform_config.discord.bot_token
+
 
 def load_config(path: str | Path | None = None) -> AppConfig:
-    """Load config from YAML file. Falls back to defaults if not found."""
+    """Load config from YAML file, then let pydantic-settings overlay env vars."""
     search_paths = [
         Path(path) if path else None,
         Path("config/agent.yaml"),
@@ -118,18 +150,18 @@ def load_config(path: str | Path | None = None) -> AppConfig:
         Path.home() / ".open_intern" / "agent.yaml",
     ]
 
-    config = AppConfig()
+    yaml_data: dict = {}
     for p in search_paths:
         if p and p.exists():
-            raw = yaml.safe_load(p.read_text())
-            config = AppConfig.model_validate(raw or {})
+            yaml_data = yaml.safe_load(p.read_text()) or {}
             break
 
-    # Environment variables override YAML config
-    if db_url := os.environ.get("DATABASE_URL"):
-        config.memory.database_url = db_url
+    # Remap YAML "platform" (nested object) to "platform_config"
+    if "platform" in yaml_data and isinstance(yaml_data["platform"], dict):
+        yaml_data["platform_config"] = yaml_data.pop("platform")
 
-    return config
+    # BaseSettings: YAML values as init kwargs, env vars auto-override
+    return AppConfig(**yaml_data)
 
 
 _config: AppConfig | None = None

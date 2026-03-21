@@ -122,11 +122,11 @@ def status(
 
     table.add_row("Name", config.identity.name)
     table.add_row("Role", config.identity.role)
-    table.add_row("Platform", config.platform.primary)
+    table.add_row("Platform", config.active_platform)
     table.add_row("LLM", f"{config.llm.provider}:{config.llm.model}")
     table.add_row("Daily Budget", f"${config.llm.daily_cost_budget_usd:.2f}")
     table.add_row("Proactivity", "Enabled" if config.behavior.proactivity.enabled else "Disabled")
-    db_url = config.memory.database_url
+    db_url = config.database_url
     db_display = db_url.split("@")[-1] if "@" in db_url else db_url
     table.add_row("Database", db_display)
 
@@ -136,7 +136,7 @@ def status(
     try:
         from memory.store import MemoryScope, MemoryStore
 
-        store = MemoryStore(config.memory.database_url)
+        store = MemoryStore(config.database_url)
         mem_table = Table(title="Memory Statistics")
         mem_table.add_column("Scope", style="cyan")
         mem_table.add_column("Count", style="green")

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import os
 import sys
 
 from fastapi import FastAPI, Request
@@ -39,7 +38,7 @@ def create_app(config: AppConfig, agent: OpenInternAgent, config_path: str) -> F
     )
 
     # API key authentication middleware
-    api_secret = os.environ.get("API_SECRET_KEY", "")
+    api_secret = config.api_secret_key
 
     @app.middleware("http")
     async def check_api_key(request: Request, call_next):
@@ -64,18 +63,16 @@ def create_app(config: AppConfig, agent: OpenInternAgent, config_path: str) -> F
         return {
             "status": "ok",
             "agent": config.identity.name,
-            "platform": config.platform.primary,
+            "platform": config.active_platform,
             "memory_count": agent.memory_store.count(),
         }
 
     return app
 
 
-def _get_port() -> int:
-    """Get the server port from PORT env var (set by Zeabur/Railway) or default 8000."""
-    import os
-
-    return int(os.environ.get("PORT", "8000"))
+def _get_port(config: AppConfig) -> int:
+    """Get the server port from config (PORT env var auto-mapped by pydantic-settings)."""
+    return config.port
 
 
 async def run_lark(app: FastAPI, config: AppConfig, agent: OpenInternAgent) -> None:
@@ -93,7 +90,7 @@ async def run_lark(app: FastAPI, config: AppConfig, agent: OpenInternAgent) -> N
         body = await request.json()
         return await handler(body)
 
-    server_config = uvicorn.Config(app, host="0.0.0.0", port=_get_port(), log_level="info")
+    server_config = uvicorn.Config(app, host="0.0.0.0", port=_get_port(config), log_level="info")
     server = uvicorn.Server(server_config)
     await server.serve()
 
@@ -116,18 +113,18 @@ async def run_telegram(app: FastAPI, config: AppConfig, agent: OpenInternAgent) 
 
     bot = TelegramBot(agent, config)
 
-    server_config = uvicorn.Config(app, host="0.0.0.0", port=_get_port(), log_level="info")
+    server_config = uvicorn.Config(app, host="0.0.0.0", port=_get_port(config), log_level="info")
     server = uvicorn.Server(server_config)
 
     # Run both the web server and telegram bot concurrently
     await asyncio.gather(server.serve(), bot.start())
 
 
-async def run_web_only(app: FastAPI) -> None:
+async def run_web_only(app: FastAPI, config: AppConfig) -> None:
     """Run only the web dashboard API (no chat platform)."""
     import uvicorn
 
-    server_config = uvicorn.Config(app, host="0.0.0.0", port=_get_port(), log_level="info")
+    server_config = uvicorn.Config(app, host="0.0.0.0", port=_get_port(config), log_level="info")
     server = uvicorn.Server(server_config)
     await server.serve()
 
@@ -145,8 +142,9 @@ async def run_agent(config_path: str | None = None) -> None:
         datefmt="%Y-%m-%d %H:%M:%S",
     )
 
+    platform = config.active_platform
     logger.info(f"Starting open_intern agent: {config.identity.name}")
-    logger.info(f"Platform: {config.platform.primary}")
+    logger.info(f"Platform: {platform}")
     logger.info(f"LLM: {config.llm.provider}:{config.llm.model}")
 
     # Initialize agent
@@ -158,14 +156,13 @@ async def run_agent(config_path: str | None = None) -> None:
     app = create_app(config, agent, config_path or "config/agent.yaml")
 
     # Run on the configured platform
-    platform = config.platform.primary
     if platform == "lark":
         await run_lark(app, config, agent)
     elif platform == "discord":
         await run_discord(config, agent)
     elif platform == "web":
-        logger.info("Running in web-only mode (dashboard API on port 8000)")
-        await run_web_only(app)
+        logger.info(f"Running in web-only mode (dashboard API on port {config.port})")
+        await run_web_only(app, config)
     elif platform == "telegram":
         await run_telegram(app, config, agent)
     elif platform == "slack":

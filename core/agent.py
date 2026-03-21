@@ -41,12 +41,7 @@ def _create_llm(config: AppConfig):
         # Set env vars so deepagents subagents also use the correct endpoint
         from langchain_anthropic import ChatAnthropic
 
-        api_key = (
-            (config.llm.api_key or None)
-            or os.environ.get("MINIMAX_API_KEY")
-            or os.environ.get("ANTHROPIC_API_KEY")
-            or ""
-        )
+        api_key = config.llm.api_key or config.minimax_api_key or config.anthropic_api_key or ""
         os.environ.setdefault("ANTHROPIC_API_KEY", api_key)
 
         return ChatAnthropic(
@@ -134,7 +129,7 @@ class OpenInternAgent:
 
     def __init__(self, config: AppConfig):
         self.config = config
-        self.memory_store = MemoryStore(config.memory.database_url)
+        self.memory_store = MemoryStore(config.database_url)
         self.safety = SafetyMiddleware(config)
         self._agent = None
         self._checkpointer = None
@@ -161,7 +156,7 @@ class OpenInternAgent:
         from psycopg.rows import dict_row
 
         self._checkpoint_conn = Connection.connect(
-            self.config.memory.database_url,
+            self.config.database_url,
             autocommit=True,
             prepare_threshold=0,
             row_factory=dict_row,
