@@ -53,10 +53,26 @@ class AgentManager:
     def _init_agent_from_record(self, rec: AgentRecord) -> OpenInternAgent:
         """Create and initialize an OpenInternAgent from a DB record."""
         agent_config = self._build_agent_config(rec)
-        agent = OpenInternAgent(agent_config, agent_id=rec.agent_id)
+        agent = OpenInternAgent(
+            agent_config,
+            agent_id=rec.agent_id,
+            sandbox_enabled=rec.sandbox_enabled,
+            e2b_sandbox_id=rec.e2b_sandbox_id,
+        )
         agent.initialize()
+        # Persist E2B sandbox ID back to DB if newly created
+        if agent._e2b_backend and agent._e2b_backend.sandbox_id:
+            self._update_sandbox_id(rec.agent_id, agent._e2b_backend.sandbox_id)
         self._agents[rec.agent_id] = agent
         return agent
+
+    def _update_sandbox_id(self, agent_id: str, sandbox_id: str) -> None:
+        """Save the E2B sandbox ID to DB for later resume."""
+        with self._session_factory() as session:
+            record = session.query(AgentRecord).filter_by(agent_id=agent_id).first()
+            if record:
+                record.e2b_sandbox_id = sandbox_id
+                session.commit()
 
     def _build_agent_config(self, rec: AgentRecord) -> AppConfig:
         """Build an AppConfig tailored for a specific agent."""
@@ -97,6 +113,7 @@ class AgentManager:
                     "llm_model": r.llm_model,
                     "llm_temperature": r.llm_temperature,
                     "telegram_token": "***" if r.telegram_token else "",
+                    "sandbox_enabled": r.sandbox_enabled,
                     "is_active": r.is_active,
                     "created_at": r.created_at.isoformat() if r.created_at else "",
                     "updated_at": r.updated_at.isoformat() if r.updated_at else "",
@@ -115,6 +132,7 @@ class AgentManager:
         llm_model: str = "claude-sonnet-4-6",
         llm_temperature: float = 0.7,
         telegram_token: str = "",
+        sandbox_enabled: bool = True,
     ) -> dict:
         """Create a new agent in DB and initialize it."""
         now = datetime.now(timezone.utc)
@@ -128,6 +146,7 @@ class AgentManager:
             llm_model=llm_model,
             llm_temperature=llm_temperature,
             telegram_token=telegram_token,
+            sandbox_enabled=sandbox_enabled,
             is_active=True,
             created_at=now,
             updated_at=now,
@@ -159,6 +178,7 @@ class AgentManager:
                 "llm_model",
                 "llm_temperature",
                 "telegram_token",
+                "sandbox_enabled",
                 "is_active",
             }
             for key, value in kwargs.items():

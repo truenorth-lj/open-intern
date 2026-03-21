@@ -68,6 +68,10 @@ class AgentRecord(Base):
     # Platform tokens (encrypted at rest recommended)
     telegram_token = Column(String, nullable=False, default="")
 
+    # Sandbox config
+    sandbox_enabled = Column(Boolean, nullable=False, default=True)
+    e2b_sandbox_id = Column(String, nullable=False, default="")
+
     is_active = Column(Boolean, nullable=False, default=True)
     created_at = Column(DateTime(timezone=True), nullable=False)
     updated_at = Column(DateTime(timezone=True), nullable=False)

@@ -63,6 +63,7 @@ class AgentCreate(BaseModel):
     llm_model: str = "claude-sonnet-4-6"
     llm_temperature: float = 0.7
     telegram_token: str = ""
+    sandbox_enabled: bool = True
 
 
 class AgentUpdate(BaseModel):
@@ -74,6 +75,7 @@ class AgentUpdate(BaseModel):
     llm_model: str | None = None
     llm_temperature: float | None = None
     telegram_token: str | None = None
+    sandbox_enabled: bool | None = None
     is_active: bool | None = None
 
 
