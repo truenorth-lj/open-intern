@@ -33,10 +33,13 @@ def create_app(config: AppConfig, agent: OpenInternAgent, config_path: str) -> F
 
     default_origins = ["http://localhost:3000", "https://open-intern.zeabur.app"]
     env_origins = os.environ.get("CORS_ORIGINS")
-    cors_origins = env_origins.split(",") if env_origins else default_origins
+    if env_origins:
+        cors_origins = [o.strip() for o in env_origins.split(",") if o.strip()]
+    else:
+        cors_origins = default_origins
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[o.strip() for o in cors_origins if o.strip()],
+        allow_origins=cors_origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
