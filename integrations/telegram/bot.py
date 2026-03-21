@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from uuid import uuid4
 
 from core.agent import OpenInternAgent
 from core.config import AppConfig
@@ -26,6 +27,19 @@ class TelegramBot(Integration):
         self._app = None
         self._bot_id: str = ""
         self._bot_username: str = ""
+        # Thread management: chat_id -> current thread_id
+        self._threads: dict[int, str] = {}
+
+    def _get_thread_id(self, chat_id: int) -> str:
+        """Get current thread_id for a chat, creating one if needed."""
+        if chat_id not in self._threads:
+            self._threads[chat_id] = f"tg-{chat_id}-{uuid4().hex[:8]}"
+        return self._threads[chat_id]
+
+    def _reset_thread(self, chat_id: int) -> str:
+        """Reset thread for a chat, returning the new thread_id."""
+        self._threads[chat_id] = f"tg-{chat_id}-{uuid4().hex[:8]}"
+        return self._threads[chat_id]
 
     async def start(self) -> None:
         """Start the Telegram bot (long polling)."""
@@ -49,8 +63,17 @@ class TelegramBot(Integration):
         async def on_start(update: Update, context):
             """Handle /start command."""
             await update.message.reply_text(
-                "Hi! I'm your AI employee. Send me a message or mention me in a group."
+                "Hi! I'm your AI employee. Send me a message or mention me in a group.\n"
+                "Use /new to start a fresh conversation."
             )
+
+        async def on_new(update: Update, context):
+            """Handle /new command — reset the conversation thread."""
+            message = update.message
+            if not message:
+                return
+            self._reset_thread(message.chat_id)
+            await message.reply_text("Conversation reset. Starting a fresh thread.")
 
         async def on_message(update: Update, context):
             """Handle incoming messages."""
@@ -82,6 +105,7 @@ class TelegramBot(Integration):
                 content = content.replace(f"@{self._bot_username}", "").strip()
 
             user = message.from_user
+            thread_id = self._get_thread_id(message.chat_id)
             event = ChatEvent(
                 platform="telegram",
                 event_type="message",
@@ -90,7 +114,7 @@ class TelegramBot(Integration):
                 user_name=(user.full_name if user else "Unknown"),
                 content=content,
                 is_dm=is_private,
-                thread_id=str(message.message_id),
+                thread_id=thread_id,
                 raw=update,
             )
 
@@ -112,6 +136,7 @@ class TelegramBot(Integration):
                 typing_task.cancel()
 
         app.add_handler(CommandHandler("start", on_start))
+        app.add_handler(CommandHandler("new", on_new))
         app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_message))
 
         logger.info("Starting Telegram bot (polling)...")
