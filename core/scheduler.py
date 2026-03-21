@@ -186,16 +186,32 @@ class CronScheduler:
             metadata_json=json.dumps(metadata or {}),
         )
 
-        # Insert via raw SQL to avoid session detachment issues
+        # Validate "once" schedule is in the future
+        if schedule_type == "once":
+            run_date = datetime.fromisoformat(schedule_expr)
+            if run_date.tzinfo is None:
+                run_date = run_date.replace(tzinfo=timezone.utc)
+            if run_date <= now:
+                raise ValueError("'once' schedule must be in the future")
+
+        # Schedule it first to validate the expression
+        self._schedule_job(record)
+
+        # Compute next_run_at from APScheduler
+        aps_job = self._scheduler.get_job(job_id)
+        next_run = aps_job.next_run_time if aps_job else None
+
+        # Insert via raw SQL in a single transaction
         with self._engine.connect() as conn:
             conn.execute(
                 sqlalchemy.text(
                     "INSERT INTO scheduled_jobs "
                     "(id, agent_id, name, schedule_type, schedule_expr, timezone, "
-                    "prompt, channel_id, enabled, created_at, updated_at, metadata_json) "
+                    "prompt, channel_id, enabled, created_at, updated_at, "
+                    "metadata_json, next_run_at) "
                     "VALUES (:id, :agent_id, :name, :schedule_type, :schedule_expr, "
                     ":timezone, :prompt, :channel_id, :enabled, :created_at, "
-                    ":updated_at, :metadata_json)"
+                    ":updated_at, :metadata_json, :next_run_at)"
                 ),
                 {
                     "id": job_id,
@@ -210,25 +226,10 @@ class CronScheduler:
                     "created_at": now,
                     "updated_at": now,
                     "metadata_json": json.dumps(metadata or {}),
+                    "next_run_at": next_run,
                 },
             )
             conn.commit()
-
-        # Schedule it
-        self._schedule_job(record)
-
-        # Compute next_run_at from APScheduler
-        aps_job = self._scheduler.get_job(job_id)
-        next_run = aps_job.next_run_time if aps_job else None
-        if next_run:
-            with self._engine.connect() as conn:
-                conn.execute(
-                    sqlalchemy.text(
-                        "UPDATE scheduled_jobs SET next_run_at = :next_run WHERE id = :id"
-                    ),
-                    {"next_run": next_run, "id": job_id},
-                )
-                conn.commit()
 
         logger.info(f"Created scheduled job: {job_id} ({name})")
         return {
