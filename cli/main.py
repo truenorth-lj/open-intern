@@ -208,6 +208,8 @@ def chat(
     agent = OpenInternAgent(config)
     agent.initialize()
 
+    import asyncio
+
     while True:
         try:
             user_input = console.input("[bold cyan]You:[/bold cyan] ")
@@ -216,8 +218,6 @@ def chat(
 
         if user_input.strip().lower() in ("quit", "exit", "q"):
             break
-
-        import asyncio
 
         response = asyncio.run(
             agent.chat(
