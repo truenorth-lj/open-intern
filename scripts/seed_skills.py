@@ -124,8 +124,8 @@ def list_skills(store) -> list[dict]:
                         )
                         skills[skill_name]["version"] = meta.get("metadata", {}).get("version", "")
                         skills[skill_name]["content"] = body.strip()
-                except (ValueError, yaml.YAMLError):
-                    pass
+                except (ValueError, yaml.YAMLError) as e:
+                    logger.warning(f"Failed to parse frontmatter for {key}: {e}")
 
     return sorted(skills.values(), key=lambda s: s["name"])
 

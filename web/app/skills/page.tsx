@@ -10,12 +10,13 @@ import type { Skill } from "@/lib/types";
 export default function SkillsPage() {
   const [skills, setSkills] = useState<Skill[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
 
   useEffect(() => {
     getSkills()
       .then((data) => setSkills(data.skills))
-      .catch((err) => console.error("Failed to load skills:", err))
+      .catch((err) => setError(err.message || "Failed to load skills"))
       .finally(() => setLoading(false));
   }, []);
 
@@ -23,6 +24,14 @@ export default function SkillsPage() {
     return (
       <div className="flex items-center justify-center py-20 text-muted-foreground">
         Loading skills...
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center py-20 text-destructive">
+        Failed to load skills: {error}
       </div>
     );
   }
