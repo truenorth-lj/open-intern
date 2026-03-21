@@ -164,14 +164,14 @@ class ChatResponse(BaseModel):
 
 
 @router.post("/chat", response_model=ChatResponse)
-def chat(body: ChatRequest):
+async def chat(body: ChatRequest):
     if _agent is None:
         raise HTTPException(status_code=503, detail="Agent not initialized")
     from uuid import uuid4
 
     is_new = not body.thread_id
     thread_id = body.thread_id or str(uuid4())
-    response = _agent.chat(
+    response = await _agent.chat(
         body.message,
         context={
             "platform": "web",

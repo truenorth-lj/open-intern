@@ -217,14 +217,18 @@ def chat(
         if user_input.strip().lower() in ("quit", "exit", "q"):
             break
 
-        response = agent.chat(
-            user_input,
-            context={
-                "platform": "cli",
-                "channel_id": "cli",
-                "user_name": "user",
-                "is_dm": True,
-            },
+        import asyncio
+
+        response = asyncio.run(
+            agent.chat(
+                user_input,
+                context={
+                    "platform": "cli",
+                    "channel_id": "cli",
+                    "user_name": "user",
+                    "is_dm": True,
+                },
+            )
         )
 
         console.print(f"[bold green]{config.identity.name}:[/bold green] {response}")

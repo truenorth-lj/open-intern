@@ -176,7 +176,7 @@ class OpenInternAgent:
         )
         logger.info(f"Agent '{self.config.identity.name}' initialized")
 
-    def chat(
+    async def chat(
         self, message: str, context: dict[str, Any] | None = None, thread_id: str | None = None
     ) -> str:
         """Send a message to the agent and get a response.
@@ -219,10 +219,18 @@ class OpenInternAgent:
         if thread_id:
             invoke_config = {"configurable": {"thread_id": thread_id}}
 
-        # Invoke the agent
-        result = self._agent.invoke(
-            {"messages": [{"role": "user", "content": enriched_message}]},
-            invoke_config,
+        # Invoke the agent in a thread pool (checkpointer doesn't support async)
+        import asyncio
+        import functools
+
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(
+            None,
+            functools.partial(
+                self._agent.invoke,
+                {"messages": [{"role": "user", "content": enriched_message}]},
+                invoke_config,
+            ),
         )
 
         # Extract response text
