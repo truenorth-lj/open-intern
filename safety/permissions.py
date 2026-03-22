@@ -125,7 +125,7 @@ class SafetyMiddleware:
         self.audit_log.append(entry)
         try:
             self._audit_logger.info(entry.model_dump_json())
-        except Exception:
+        except OSError:
             logger.warning("Failed to write audit log entry", exc_info=True)
         logger.info(f"[AUDIT] {entry.verdict.value}: {entry.action_type} - {entry.description}")
 
