@@ -200,7 +200,7 @@ class OpenInternAgent:
         # Seed skills from disk into PostgresStore
         from scripts.seed_skills import seed_skills
 
-        n = seed_skills(self._postgres_store)
+        n = seed_skills(self._postgres_store, agent_id=self.agent_id)
         if n:
             logger.info(f"Seeded {n} skill file(s) into store")
 
