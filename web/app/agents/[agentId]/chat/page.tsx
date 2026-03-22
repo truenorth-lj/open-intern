@@ -55,10 +55,14 @@ export default function AgentNewChatPage({
       );
       document.dispatchEvent(new CustomEvent("oi:refresh-threads"));
       router.push(`/agents/${agentId}/chat/${data.thread_id}`);
-    } catch {
+    } catch (err) {
+      const msg =
+        err instanceof Error && err.message.includes("NO_API_KEY")
+          ? "This agent has no API key configured. Please set one in the agent's Edit page, or configure a system default in Settings."
+          : "Error: Could not reach the agent.";
       setMessages((prev) => [
         ...prev,
-        { role: "assistant", content: "Error: Could not reach the agent." },
+        { role: "assistant", content: msg },
       ]);
       setLoading(false);
     }

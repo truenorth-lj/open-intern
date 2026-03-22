@@ -18,40 +18,40 @@ export async function getStatus() {
   return res.json();
 }
 
-export async function getConfig() {
-  const res = await apiFetch("/config");
-  if (!res.ok) throw new Error("Failed to fetch config");
+// --- System Settings ---
+
+export interface SystemSetting {
+  key: string;
+  value: string;
+  is_secret: boolean;
+  description: string;
+  updated_at: string;
+}
+
+export async function getSystemSettings(): Promise<{ settings: SystemSetting[] }> {
+  const res = await apiFetch("/settings");
+  if (!res.ok) throw new Error("Failed to fetch settings");
   return res.json();
 }
 
-export async function updateIdentity(data: {
-  name: string;
-  role: string;
-  personality: string;
-  avatar_url?: string;
-}) {
-  const res = await apiFetch("/config/identity", {
+export async function upsertSystemSetting(
+  key: string,
+  value: string,
+  is_secret: boolean = false,
+  description: string = "",
+) {
+  const res = await apiFetch(`/settings/${key}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(data),
+    body: JSON.stringify({ value, is_secret, description }),
   });
-  if (!res.ok) throw new Error("Failed to update identity");
+  if (!res.ok) throw new Error("Failed to save setting");
   return res.json();
 }
 
-export async function updateLLM(data: {
-  provider: string;
-  model: string;
-  temperature: number;
-  max_tokens_per_action: number;
-  daily_cost_budget_usd: number;
-}) {
-  const res = await apiFetch("/config/llm", {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(data),
-  });
-  if (!res.ok) throw new Error("Failed to update LLM config");
+export async function deleteSystemSetting(key: string) {
+  const res = await apiFetch(`/settings/${key}`, { method: "DELETE" });
+  if (!res.ok) throw new Error("Failed to delete setting");
   return res.json();
 }
 
@@ -61,7 +61,10 @@ export async function sendMessage(message: string, threadId?: string, agentId?: 
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ message, thread_id: threadId || "", agent_id: agentId || "" }),
   });
-  if (!res.ok) throw new Error("Failed to send message");
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to send message");
+  }
   return res.json();
 }
 
@@ -149,6 +152,7 @@ export interface AgentInfo {
   llm_provider: string;
   llm_model: string;
   llm_temperature: number;
+  llm_api_key: string;
   telegram_token: string;
   sandbox_enabled: boolean;
   is_active: boolean;
@@ -171,6 +175,7 @@ export async function createAgent(data: {
   llm_provider?: string;
   llm_model?: string;
   llm_temperature?: number;
+  llm_api_key?: string;
   telegram_token?: string;
   sandbox_enabled?: boolean;
 }) {

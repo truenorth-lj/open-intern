@@ -82,10 +82,14 @@ export default function AgentThreadPage({
       getThreadTokenUsage(threadId)
         .then(setTokenUsage)
         .catch(() => {});
-    } catch {
+    } catch (err) {
+      const msg =
+        err instanceof Error && err.message.includes("NO_API_KEY")
+          ? "This agent has no API key configured. Please set one in the agent's Edit page, or configure a system default in Settings."
+          : "Error: Could not reach the agent.";
       setMessages((prev) => [
         ...prev,
-        { role: "assistant", content: "Error: Could not reach the agent." },
+        { role: "assistant", content: msg },
       ]);
     } finally {
       setLoading(false);
