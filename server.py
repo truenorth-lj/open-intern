@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 import sys
+from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -38,7 +39,7 @@ def get_cron_scheduler() -> CronScheduler:
     return _cron_scheduler
 
 
-def get_bot(platform: str, agent_id: str):
+def get_bot(platform: str, agent_id: str) -> Any | None:
     """Get a platform bot instance for outbound messaging."""
     if platform == "telegram":
         bot = _telegram_bots.get(agent_id)
@@ -46,6 +47,7 @@ def get_bot(platform: str, agent_id: str):
             return bot
         # Fallback: try "default" bot
         return _telegram_bots.get("default")
+    logger.warning(f"Unsupported delivery platform: {platform}")
     return None
 
 
