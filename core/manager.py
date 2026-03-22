@@ -99,6 +99,18 @@ class AgentManager:
                 record.e2b_sandbox_id = sandbox_id
                 session.commit()
 
+    def _reload_agent(self, agent_id: str) -> None:
+        """Reload an agent's runtime from DB so config changes take effect."""
+        with self._session_factory() as session:
+            record = session.query(AgentRecord).filter_by(agent_id=agent_id).first()
+            if not record or not record.is_active:
+                return
+            try:
+                self._init_agent_from_record(record)
+                logger.info(f"Reloaded agent runtime: {agent_id}")
+            except Exception as e:
+                logger.error(f"Failed to reload agent {agent_id}: {e}")
+
     def _resolve_llm_api_key(self, rec: AgentRecord) -> str:
         """Resolve LLM API key: agent's own > system default > empty."""
         # 1. Agent's own key
@@ -299,7 +311,7 @@ class AgentManager:
         return {"agent_id": agent_id, "name": name, "status": "active"}
 
     def update_agent(self, agent_id: str, **kwargs) -> dict:
-        """Update agent fields in DB. Secrets are encrypted before storage."""
+        """Update agent fields in DB and reload the in-memory agent instance."""
         with self._session_factory() as session:
             record = session.query(AgentRecord).filter_by(agent_id=agent_id).first()
             if not record:
@@ -333,6 +345,8 @@ class AgentManager:
             session.commit()
             agent_id_val = record.agent_id
         logger.info(f"Updated agent: {agent_id_val}")
+        # Reload agent runtime so config changes (API keys, model, etc.) take effect
+        self._reload_agent(agent_id_val)
         return {"agent_id": agent_id_val, "status": "updated"}
 
     def delete_agent(self, agent_id: str) -> dict:
@@ -417,7 +431,15 @@ class AgentManager:
                     )
                 )
             session.commit()
+        # If default API key changed, reload all agents so they pick it up
+        if key == "default_llm_api_key":
+            self._reload_all_agents()
         return {"key": key, "status": "updated"}
+
+    def _reload_all_agents(self) -> None:
+        """Reload all active agents from DB."""
+        for agent_id in list(self._agents.keys()):
+            self._reload_agent(agent_id)
 
     def delete_system_setting(self, key: str) -> bool:
         """Delete a system setting. Returns True if deleted."""

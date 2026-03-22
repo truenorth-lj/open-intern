@@ -163,6 +163,17 @@ def delete_agent(agent_id: str, admin: dict = Depends(require_admin)):
         raise HTTPException(status_code=404, detail=str(e))
 
 
+@router.post("/agents/{agent_id}/reload")
+def reload_agent(agent_id: str, admin: dict = Depends(require_admin)):
+    """Reload an agent's runtime so config changes take effect immediately."""
+    mgr = _get_manager()
+    agents = mgr.list_agents()
+    if not any(a["agent_id"] == agent_id for a in agents):
+        raise HTTPException(status_code=404, detail=f"Agent '{agent_id}' not found")
+    mgr._reload_agent(agent_id)
+    return {"ok": True, "agent_id": agent_id, "status": "reloaded"}
+
+
 class TelegramTestRequest(BaseModel):
     chat_id: str = Field(..., pattern=r"^-?\d+$")
     message: str = Field(
