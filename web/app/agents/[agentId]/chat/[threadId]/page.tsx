@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { sendMessage, getThreadTokenUsage } from "@/lib/api";
+import { sendMessage, getThreadTokenUsage, listAgents } from "@/lib/api";
 import type { ChatMessage } from "@/lib/types";
 
 function formatTokenCount(n: number): string {
@@ -14,12 +14,13 @@ function formatTokenCount(n: number): string {
   return String(n);
 }
 
-export default function ThreadPage({
+export default function AgentThreadPage({
   params,
 }: {
-  params: Promise<{ threadId: string }>;
+  params: Promise<{ agentId: string; threadId: string }>;
 }) {
-  const { threadId } = use(params);
+  const { agentId, threadId } = use(params);
+  const [agentName, setAgentName] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -35,7 +36,15 @@ export default function ThreadPage({
     scrollRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // Load messages from sessionStorage when entering a thread
+  useEffect(() => {
+    listAgents()
+      .then((data) => {
+        const agent = data.agents.find((a) => a.agent_id === agentId);
+        if (agent) setAgentName(agent.name);
+      })
+      .catch(() => {});
+  }, [agentId]);
+
   useEffect(() => {
     const key = `thread_${threadId}`;
     const stored = sessionStorage.getItem(key);
@@ -48,7 +57,6 @@ export default function ThreadPage({
     } else {
       setMessages([]);
     }
-    // Load token usage
     getThreadTokenUsage(threadId)
       .then(setTokenUsage)
       .catch(() => {});
@@ -67,13 +75,15 @@ export default function ThreadPage({
     setLoading(true);
 
     try {
-      const data = await sendMessage(text, threadId);
+      const data = await sendMessage(text, threadId, agentId);
       setMessages((prev) => {
-        const updated = [...prev, { role: "assistant" as const, content: data.response }];
+        const updated = [
+          ...prev,
+          { role: "assistant" as const, content: data.response },
+        ];
         sessionStorage.setItem(`thread_${threadId}`, JSON.stringify(updated));
         return updated;
       });
-      // Refresh token usage after each message
       getThreadTokenUsage(threadId)
         .then(setTokenUsage)
         .catch(() => {});
@@ -96,14 +106,17 @@ export default function ThreadPage({
 
   return (
     <>
-      {tokenUsage && tokenUsage.total_tokens > 0 && (
-        <div className="flex gap-4 text-xs text-muted-foreground mb-2 px-1">
-          <span>Tokens: {formatTokenCount(tokenUsage.total_tokens)}</span>
-          <span>In: {formatTokenCount(tokenUsage.input_tokens)}</span>
-          <span>Out: {formatTokenCount(tokenUsage.output_tokens)}</span>
-          <span>Requests: {tokenUsage.request_count}</span>
-        </div>
-      )}
+      <div className="flex items-center justify-between mb-2">
+        <h2 className="text-lg font-bold">{agentName || agentId}</h2>
+        {tokenUsage && tokenUsage.total_tokens > 0 && (
+          <div className="flex gap-4 text-xs text-muted-foreground">
+            <span>Tokens: {formatTokenCount(tokenUsage.total_tokens)}</span>
+            <span>In: {formatTokenCount(tokenUsage.input_tokens)}</span>
+            <span>Out: {formatTokenCount(tokenUsage.output_tokens)}</span>
+            <span>Requests: {tokenUsage.request_count}</span>
+          </div>
+        )}
+      </div>
 
       <ScrollArea className="flex-1 mb-4">
         <div className="space-y-4 pr-4">
@@ -119,7 +132,9 @@ export default function ThreadPage({
             >
               <Card
                 className={`max-w-[75%] px-4 py-3 ${
-                  msg.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted"
+                  msg.role === "user"
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-muted"
                 }`}
               >
                 <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
@@ -147,7 +162,11 @@ export default function ThreadPage({
           rows={2}
           disabled={loading}
         />
-        <Button onClick={handleSend} disabled={loading || !input.trim()} className="self-end">
+        <Button
+          onClick={handleSend}
+          disabled={loading || !input.trim()}
+          className="self-end"
+        >
           Send
         </Button>
       </div>

@@ -55,18 +55,19 @@ export async function updateLLM(data: {
   return res.json();
 }
 
-export async function sendMessage(message: string, threadId?: string): Promise<{ response: string; thread_id: string; title: string }> {
+export async function sendMessage(message: string, threadId?: string, agentId?: string): Promise<{ response: string; thread_id: string; title: string }> {
   const res = await apiFetch("/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message, thread_id: threadId || "" }),
+    body: JSON.stringify({ message, thread_id: threadId || "", agent_id: agentId || "" }),
   });
   if (!res.ok) throw new Error("Failed to send message");
   return res.json();
 }
 
-export async function getThreads(): Promise<{ threads: { thread_id: string; title: string; created_at: string }[] }> {
-  const res = await apiFetch("/threads");
+export async function getThreads(agentId?: string): Promise<{ threads: { thread_id: string; title: string; created_at: string }[] }> {
+  const params = agentId ? `?agent_id=${agentId}` : "";
+  const res = await apiFetch(`/threads${params}`);
   if (!res.ok) throw new Error("Failed to fetch threads");
   return res.json();
 }
