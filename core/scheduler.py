@@ -95,6 +95,7 @@ class CronScheduler:
             prompt = record.prompt
             channel_id = record.channel_id
             job_name = record.name
+            isolated = record.isolated
 
         logger.info(f"Executing scheduled job: {job_name} (agent: {agent_id})")
 
@@ -109,7 +110,8 @@ class CronScheduler:
                 "user_name": "scheduler",
                 "is_dm": False,
             }
-            thread_id = f"cron:{job_id}"
+            # isolated: fresh thread each run; persistent: reuse same thread
+            thread_id = f"cron:{job_id}:{uuid4()}" if isolated else f"cron:{job_id}"
             response = await agent.chat(prompt, context=context, thread_id=thread_id)
 
             # Update last run status
@@ -165,6 +167,7 @@ class CronScheduler:
         prompt: str,
         tz: str = "UTC",
         channel_id: str = "",
+        isolated: bool = False,
         metadata: dict[str, Any] | None = None,
     ) -> dict:
         """Create a new scheduled job in DB and schedule it."""
@@ -180,6 +183,7 @@ class CronScheduler:
             timezone=tz,
             prompt=prompt,
             channel_id=channel_id,
+            isolated=isolated,
             enabled=True,
             created_at=now,
             updated_at=now,
@@ -207,10 +211,10 @@ class CronScheduler:
                 sqlalchemy.text(
                     "INSERT INTO scheduled_jobs "
                     "(id, agent_id, name, schedule_type, schedule_expr, timezone, "
-                    "prompt, channel_id, enabled, created_at, updated_at, "
+                    "prompt, channel_id, isolated, enabled, created_at, updated_at, "
                     "metadata_json, next_run_at) "
                     "VALUES (:id, :agent_id, :name, :schedule_type, :schedule_expr, "
-                    ":timezone, :prompt, :channel_id, :enabled, :created_at, "
+                    ":timezone, :prompt, :channel_id, :isolated, :enabled, :created_at, "
                     ":updated_at, :metadata_json, :next_run_at)"
                 ),
                 {
@@ -222,6 +226,7 @@ class CronScheduler:
                     "timezone": tz,
                     "prompt": prompt,
                     "channel_id": channel_id,
+                    "isolated": isolated,
                     "enabled": True,
                     "created_at": now,
                     "updated_at": now,
@@ -241,6 +246,7 @@ class CronScheduler:
             "timezone": tz,
             "prompt": prompt,
             "channel_id": channel_id,
+            "isolated": isolated,
             "enabled": True,
             "last_run_at": None,
             "last_run_status": None,
@@ -284,6 +290,7 @@ class CronScheduler:
             "timezone",
             "prompt",
             "channel_id",
+            "isolated",
             "enabled",
         }
         schedule_changed = False
@@ -371,6 +378,7 @@ class CronScheduler:
             "timezone": record.timezone,
             "prompt": record.prompt,
             "channel_id": record.channel_id,
+            "isolated": record.isolated,
             "enabled": record.enabled,
             "last_run_at": record.last_run_at.isoformat() if record.last_run_at else None,
             "last_run_status": record.last_run_status,
@@ -400,6 +408,7 @@ def create_scheduler_tools(scheduler: CronScheduler, agent_id: str) -> list:
         prompt: str,
         timezone: str = "UTC",
         channel_id: str = "",
+        isolated: bool = False,
     ) -> str:
         """Create a new scheduled job that will run automatically.
 
@@ -413,6 +422,9 @@ def create_scheduler_tools(scheduler: CronScheduler, agent_id: str) -> list:
             prompt: The message/instruction to execute when the job triggers.
             timezone: IANA timezone (default "UTC"). E.g., "Asia/Shanghai", "US/Eastern".
             channel_id: Optional channel to deliver the response to.
+            isolated: If True, each run uses a fresh conversation thread (no memory
+                of previous runs). If False (default), all runs share the same thread
+                so the agent can reference prior executions.
         """
         result = await scheduler.add_job(
             agent_id=agent_id,
@@ -422,6 +434,7 @@ def create_scheduler_tools(scheduler: CronScheduler, agent_id: str) -> list:
             prompt=prompt,
             tz=timezone,
             channel_id=channel_id,
+            isolated=isolated,
         )
         return (
             f"Created scheduled job '{result['name']}' (ID: {result['id']}). "
