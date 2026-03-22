@@ -9,11 +9,14 @@ Revises: c4d5e6f7a8b9
 Create Date: 2026-03-22 12:00:00.000000
 """
 
+import logging
 import os
 
 import sqlalchemy as sa
 
 from alembic import op
+
+logger = logging.getLogger(__name__)
 
 revision = "d5e6f7a8b9c0"
 down_revision = "c4d5e6f7a8b9"
@@ -136,8 +139,12 @@ def downgrade() -> None:
                     sa.text("UPDATE agents SET telegram_token = :tok WHERE agent_id = :aid"),
                     {"tok": decrypted, "aid": row[0]},
                 )
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(
+                    "Decrypt failed for agent %s, preserving encrypted value: %s",
+                    row[0],
+                    e,
+                )
     else:
         op.execute(
             "UPDATE agents "
