@@ -501,6 +501,8 @@ export default function AgentsPage() {
                   onClick={() => {
                     setShowForm(false);
                     setEditingAgent(null);
+                    setTestChatId("");
+                    setTestMsg("");
                   }}
                 >
                   Cancel
