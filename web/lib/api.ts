@@ -136,3 +136,76 @@ export async function getTokenUsageSummary() {
   if (!res.ok) throw new Error("Failed to fetch token usage summary");
   return res.json();
 }
+
+// --- Agent CRUD ---
+
+export interface AgentInfo {
+  agent_id: string;
+  name: string;
+  role: string;
+  personality: string;
+  avatar_url: string;
+  llm_provider: string;
+  llm_model: string;
+  llm_temperature: number;
+  telegram_token: string;
+  sandbox_enabled: boolean;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function listAgents(): Promise<{ agents: AgentInfo[] }> {
+  const res = await apiFetch("/agents");
+  if (!res.ok) throw new Error("Failed to fetch agents");
+  return res.json();
+}
+
+export async function createAgent(data: {
+  agent_id: string;
+  name: string;
+  role?: string;
+  personality?: string;
+  avatar_url?: string;
+  llm_provider?: string;
+  llm_model?: string;
+  llm_temperature?: number;
+  telegram_token?: string;
+  sandbox_enabled?: boolean;
+}) {
+  const res = await apiFetch("/agents", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to create agent");
+  }
+  return res.json();
+}
+
+export async function updateAgent(
+  agentId: string,
+  data: Partial<Omit<AgentInfo, "agent_id" | "created_at" | "updated_at">>,
+) {
+  const res = await apiFetch(`/agents/${agentId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to update agent");
+  }
+  return res.json();
+}
+
+export async function deleteAgent(agentId: string) {
+  const res = await apiFetch(`/agents/${agentId}`, { method: "DELETE" });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to delete agent");
+  }
+  return res.json();
+}

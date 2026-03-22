@@ -170,8 +170,10 @@ class AgentManager:
                 raise ValueError(f"Agent '{agent_id}' already exists")
             session.add(record)
             session.commit()
+            # Expunge before session closes so record stays usable
+            session.expunge(record)
 
-        # Initialize the agent runtime
+        # Initialize the agent runtime (record is detached but fully loaded)
         self._init_agent_from_record(record)
         logger.info(f"Created agent: {agent_id} ({name})")
         return {"agent_id": agent_id, "name": name, "status": "active"}
