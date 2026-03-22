@@ -946,6 +946,8 @@ def get_token_usage_timeseries(
         elif accessible is not None:
             q = q.filter(TokenUsageRecord.agent_id.in_(accessible))
 
+        start_dt: datetime | None = None
+        end_dt: datetime | None = None
         if start:
             try:
                 start_dt = datetime.fromisoformat(start)
@@ -966,7 +968,7 @@ def get_token_usage_timeseries(
                 q = q.filter(TokenUsageRecord.created_at <= end_dt)
             except ValueError:
                 raise HTTPException(status_code=400, detail="Invalid end date")
-        if start and end and start_dt > end_dt:  # type: ignore[possibly-undefined]
+        if start_dt is not None and end_dt is not None and start_dt > end_dt:
             raise HTTPException(status_code=400, detail="start must be before end")
 
         points = []
