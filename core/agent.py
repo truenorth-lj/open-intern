@@ -259,9 +259,9 @@ class OpenInternAgent:
                         api_key=api_key,
                         sandbox_id=self.e2b_sandbox_id or None,
                     )
-                    backend.connect()
+                    # Lazy: don't connect now, _ensure_sandbox() will connect on first use
                     self._e2b_backend = backend
-                    logger.info(f"E2B sandbox ready: {backend.sandbox_id} (agent: {self.agent_id})")
+                    logger.info(f"E2B sandbox configured (lazy) for agent: {self.agent_id}")
                     return backend
             except ImportError:
                 logger.warning(
