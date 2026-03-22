@@ -75,11 +75,13 @@ export async function sendMessageStream(
   onError?: (error: string) => void,
   threadId?: string,
   agentId?: string,
+  signal?: AbortSignal,
 ): Promise<void> {
   const res = await apiFetch("/chat/stream", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ message, thread_id: threadId || "", agent_id: agentId || "" }),
+    signal,
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));

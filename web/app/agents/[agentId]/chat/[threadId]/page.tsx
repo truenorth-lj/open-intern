@@ -106,7 +106,8 @@ export default function AgentThreadPage({
             const updated = [...prev];
             const last = updated[updated.length - 1];
             if (last && last.role === "assistant") {
-              updated[updated.length - 1] = { ...last, content: error };
+              const prefix = last.content ? last.content + "\n\n" : "";
+              updated[updated.length - 1] = { ...last, content: prefix + `[Error: ${error}]` };
             }
             return updated;
           });

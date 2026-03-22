@@ -15,6 +15,9 @@ logger = logging.getLogger(__name__)
 class TelegramBot(Integration):
     """Telegram bot integration using webhook mode."""
 
+    # Minimum seconds between message edits to avoid Telegram API rate limits
+    EDIT_INTERVAL_SECONDS = 1.5
+
     def __init__(self, agent: OpenInternAgent, token: str, agent_id: str):
         super().__init__(agent)
         if not token.strip():
@@ -148,7 +151,6 @@ class TelegramBot(Integration):
         sent = await self._app.bot.send_message(chat_id=chat_id, text="Thinking...")
         accumulated = ""
         last_edit = 0.0
-        edit_interval = 1.5  # seconds between edits to avoid rate limits
 
         try:
             async for chunk in self.agent.chat_stream(
@@ -158,7 +160,7 @@ class TelegramBot(Integration):
                     accumulated += chunk["content"]
                     now = time.monotonic()
                     # Rate-limit edits to avoid Telegram API throttling
-                    if now - last_edit >= edit_interval and accumulated:
+                    if now - last_edit >= self.EDIT_INTERVAL_SECONDS and accumulated:
                         try:
                             display = accumulated[:4096]
                             await self._app.bot.edit_message_text(

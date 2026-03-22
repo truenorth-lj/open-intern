@@ -429,7 +429,14 @@ class OpenInternAgent:
         # Get final state for token usage
         import asyncio
 
-        final_state = await asyncio.to_thread(self._agent.get_state, invoke_config)
+        try:
+            final_state = await asyncio.wait_for(
+                asyncio.to_thread(self._agent.get_state, invoke_config),
+                timeout=30.0,
+            )
+        except TimeoutError:
+            logger.warning("get_state timed out after 30s, skipping token usage")
+            final_state = None
         # Extract token usage from the final messages
         result = {"messages": final_state.values.get("messages", [])} if final_state else {}
         token_usage = self._extract_token_usage(result)
