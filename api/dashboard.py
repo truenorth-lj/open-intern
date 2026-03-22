@@ -560,7 +560,7 @@ def list_skills(agent_id: str = "", user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=503, detail="Agent not available")
     if not agent.is_initialized or agent._postgres_store is None:
         raise HTTPException(status_code=503, detail="Agent not initialized")
-    skills = _list_skills(agent._postgres_store)
+    skills = _list_skills(agent._postgres_store, agent_id=agent.agent_id)
     return {"skills": skills}
 
 
@@ -577,7 +577,7 @@ def get_skill(skill_name: str, agent_id: str = "", user: dict = Depends(get_curr
         raise HTTPException(status_code=503, detail="Agent not available")
     if not agent.is_initialized or agent._postgres_store is None:
         raise HTTPException(status_code=503, detail="Agent not initialized")
-    skills = _list_skills(agent._postgres_store)
+    skills = _list_skills(agent._postgres_store, agent_id=agent.agent_id)
     for s in skills:
         if s["name"] == skill_name:
             return s

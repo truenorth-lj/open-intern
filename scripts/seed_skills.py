@@ -16,22 +16,29 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 SKILLS_DIR = Path(__file__).resolve().parent.parent / "skills"
-NAMESPACE = ("filesystem",)
+DEFAULT_AGENT_ID = "default"
 MAX_FILE_SIZE = 1_000_000  # 1MB
 
 
-def seed_skills(store, skills_dir: Path | None = None) -> int:
+def _namespace_for(agent_id: str) -> tuple[str, ...]:
+    """Return the store namespace matching the agent's StoreBackend."""
+    return ("agent", agent_id, "filesystem")
+
+
+def seed_skills(store, skills_dir: Path | None = None, *, agent_id: str = DEFAULT_AGENT_ID) -> int:
     """Seed all skills from disk into a LangGraph BaseStore.
 
     Args:
         store: A LangGraph BaseStore instance (e.g. PostgresStore).
         skills_dir: Directory containing skill subdirectories. Defaults to project skills/.
+        agent_id: Agent ID to determine the correct store namespace.
 
     Returns:
         Number of skill files seeded.
     """
     from deepagents.backends.utils import create_file_data
 
+    namespace = _namespace_for(agent_id)
     skills_dir = skills_dir or SKILLS_DIR
     if not skills_dir.exists():
         logger.warning(f"Skills directory not found: {skills_dir}")
@@ -59,19 +66,19 @@ def seed_skills(store, skills_dir: Path | None = None) -> int:
             file_data = create_file_data(content)
 
             # Check if file already exists with same content
-            existing = store.get(NAMESPACE, virtual_path)
+            existing = store.get(namespace, virtual_path)
             if existing and existing.value.get("content") == file_data["content"]:
                 logger.debug(f"Skill unchanged, skipping: {virtual_path}")
                 continue
 
-            store.put(NAMESPACE, virtual_path, file_data)
+            store.put(namespace, virtual_path, file_data)
             logger.info(f"Seeded skill: {virtual_path}")
             count += 1
 
     return count
 
 
-def list_skills(store) -> list[dict]:
+def list_skills(store, *, agent_id: str = DEFAULT_AGENT_ID) -> list[dict]:
     """List all skills currently stored in PostgresStore.
 
     Returns:
@@ -79,7 +86,8 @@ def list_skills(store) -> list[dict]:
     """
     import yaml
 
-    items = store.search(NAMESPACE, limit=1000)
+    namespace = _namespace_for(agent_id)
+    items = store.search(namespace, limit=1000)
     skills = {}
 
     for item in items:
@@ -138,6 +146,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Seed skills into PostgresStore")
     parser.add_argument("--db-url", default=os.environ.get("DATABASE_URL", ""))
+    parser.add_argument("--agent-id", default=DEFAULT_AGENT_ID)
     args = parser.parse_args()
 
     db_url = args.db_url
@@ -150,5 +159,5 @@ if __name__ == "__main__":
     store_ctx = PostgresStore.from_conn_string(db_url)
     with store_ctx as store:
         store.setup()
-        n = seed_skills(store)
+        n = seed_skills(store, agent_id=args.agent_id)
         logger.info(f"Seeded {n} skill file(s).")
