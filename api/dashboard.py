@@ -314,6 +314,15 @@ async def chat(body: ChatRequest, user: dict = Depends(get_current_user)):
     except Exception:
         raise HTTPException(status_code=404, detail=f"Agent '{agent_id}' not available")
 
+    # Check API key is configured before attempting LLM call
+    if not agent.config.llm.api_key:
+        raise HTTPException(
+            status_code=422,
+            detail="NO_API_KEY: This agent has no LLM API key configured. "
+            "Set one in the agent's edit page, or configure a system default "
+            "in Settings.",
+        )
+
     from uuid import uuid4
 
     is_new = not body.thread_id
@@ -331,18 +340,12 @@ async def chat(body: ChatRequest, user: dict = Depends(get_current_user)):
             },
             thread_id=thread_id,
         )
-    except TypeError as e:
-        if "api_key" in str(e) or "authentication" in str(e).lower():
-            raise HTTPException(
-                status_code=422,
-                detail="NO_API_KEY: This agent has no LLM API key configured. "
-                "Set one in the agent's edit page, or configure a system default "
-                "in Settings.",
-            )
-        raise HTTPException(status_code=500, detail=f"LLM error: {e}")
     except Exception as e:
         logger.error("Chat failed for agent %s: %s", agent_id, e)
-        raise HTTPException(status_code=500, detail=f"Agent error: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="An internal error occurred while processing your request.",
+        )
 
     user_id = user.get("user_id", "")
 
