@@ -163,6 +163,90 @@ def delete_agent(agent_id: str, admin: dict = Depends(require_admin)):
         raise HTTPException(status_code=404, detail=str(e))
 
 
+class TelegramTestRequest(BaseModel):
+    chat_id: str = Field(..., pattern=r"^-?\d+$")
+    message: str = Field(
+        default="Hello from open_intern! Your Telegram connection is working.",
+        max_length=4096,
+    )
+
+
+@router.post("/agents/{agent_id}/test-telegram")
+async def test_telegram(
+    agent_id: str,
+    body: TelegramTestRequest,
+    admin: dict = Depends(require_admin),
+):
+    """Send a test message via Telegram bot to verify the connection."""
+    mgr = _get_manager()
+    from memory.store import AgentRecord
+
+    with mgr._session_factory() as session:
+        record = (
+            session.query(AgentRecord)
+            .filter_by(
+                agent_id=agent_id,
+            )
+            .first()
+        )
+        if not record:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Agent '{agent_id}' not found",
+            )
+        if not record.telegram_token_encrypted:
+            raise HTTPException(
+                status_code=400,
+                detail="No Telegram token configured for this agent",
+            )
+
+        from core.crypto import decrypt
+
+        token = decrypt(record.telegram_token_encrypted)
+
+    try:
+        import httpx
+
+        tg_api = f"https://api.telegram.org/bot{token}"
+        async with httpx.AsyncClient() as client:
+            # First verify the token by calling getMe
+            me_resp = await client.get(f"{tg_api}/getMe")
+            me_data = me_resp.json()
+            if not me_data.get("ok"):
+                desc = me_data.get("description", "unknown error")
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid Telegram token: {desc}",
+                )
+
+            bot_username = me_data["result"].get("username", "unknown")
+
+            # Send test message
+            send_resp = await client.post(
+                f"{tg_api}/sendMessage",
+                json={"chat_id": body.chat_id, "text": body.message},
+            )
+            send_data = send_resp.json()
+            if not send_data.get("ok"):
+                desc = send_data.get("description", "unknown error")
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Failed to send: {desc}",
+                )
+
+        return {
+            "ok": True,
+            "bot_username": bot_username,
+            "chat_id": body.chat_id,
+            "message": "Test message sent successfully.",
+        }
+    except httpx.HTTPError as e:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Telegram API request failed: {e}",
+        )
+
+
 # --- Status ---
 
 
