@@ -25,9 +25,9 @@ if not db_url:
     except Exception as e:
         logger.warning("Could not load app config for DB URL: %s", e)
 if db_url:
-    # Normalise to psycopg2 driver (same as MemoryStore)
-    if db_url.startswith("postgresql+psycopg://"):
-        db_url = db_url.replace("postgresql+psycopg://", "postgresql://", 1)
+    # Normalise to psycopg (v3) driver for Alembic migrations
+    if db_url.startswith("postgresql://") and "+psycopg" not in db_url:
+        db_url = db_url.replace("postgresql://", "postgresql+psycopg://", 1)
     config.set_main_option("sqlalchemy.url", db_url)
 
 target_metadata = Base.metadata
