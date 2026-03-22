@@ -948,16 +948,26 @@ def get_token_usage_timeseries(
 
         if start:
             try:
-                start_dt = datetime.fromisoformat(start).replace(tzinfo=timezone.utc)
+                start_dt = datetime.fromisoformat(start)
+                if start_dt.tzinfo is None:
+                    start_dt = start_dt.replace(tzinfo=timezone.utc)
+                else:
+                    start_dt = start_dt.astimezone(timezone.utc)
                 q = q.filter(TokenUsageRecord.created_at >= start_dt)
             except ValueError:
                 raise HTTPException(status_code=400, detail="Invalid start date")
         if end:
             try:
-                end_dt = datetime.fromisoformat(end).replace(tzinfo=timezone.utc)
+                end_dt = datetime.fromisoformat(end)
+                if end_dt.tzinfo is None:
+                    end_dt = end_dt.replace(tzinfo=timezone.utc)
+                else:
+                    end_dt = end_dt.astimezone(timezone.utc)
                 q = q.filter(TokenUsageRecord.created_at <= end_dt)
             except ValueError:
                 raise HTTPException(status_code=400, detail="Invalid end date")
+        if start and end and start_dt > end_dt:  # type: ignore[possibly-undefined]
+            raise HTTPException(status_code=400, detail="start must be before end")
 
         points = []
         for row in q.all():

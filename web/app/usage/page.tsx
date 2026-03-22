@@ -121,6 +121,7 @@ export default function UsagePage() {
         : getPresetRange(rangePreset);
     if (!range.start || !range.end) return;
 
+    setError("");
     getTokenUsageTimeseries({
       start: range.start,
       end: range.end,
