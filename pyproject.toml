@@ -33,7 +33,7 @@ slack = ["slack-bolt>=1.21.0"]
 telegram = ["python-telegram-bot>=21.0"]
 e2b = ["e2b>=1.0.0"]
 all = ["open-intern[lark,discord,slack,telegram,e2b]"]
-dev = ["pytest>=8.0", "ruff>=0.8.0", "mypy>=1.13.0"]
+dev = ["pytest>=8.0", "ruff>=0.8.0", "mypy>=1.13.0"]  # kept for backwards compat
 
 [project.scripts]
 open_intern = "cli.main:app"
@@ -44,6 +44,9 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["core", "memory", "safety", "integrations", "skills", "cli", "api"]
+
+[tool.uv]
+dev-dependencies = ["pytest>=8.0", "ruff>=0.8.0", "mypy>=1.13.0"]
 
 [tool.ruff]
 line-length = 100
