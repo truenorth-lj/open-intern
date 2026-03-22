@@ -1,24 +1,29 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, use } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { getSkills } from "@/lib/api";
 import type { Skill } from "@/lib/types";
 
-export default function SkillsPage() {
+export default function AgentSkillsPage({
+  params,
+}: {
+  params: Promise<{ agentId: string }>;
+}) {
+  const { agentId } = use(params);
   const [skills, setSkills] = useState<Skill[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
 
   useEffect(() => {
-    getSkills()
+    getSkills(agentId)
       .then((data) => setSkills(data.skills))
       .catch((err) => setError(err.message || "Failed to load skills"))
       .finally(() => setLoading(false));
-  }, []);
+  }, [agentId]);
 
   if (loading) {
     return (

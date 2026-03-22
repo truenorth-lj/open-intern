@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useCallback, use } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -88,12 +87,6 @@ export function AgentChatSidebar({
   return (
     <div className="w-56 border-r flex flex-col">
       <div className="p-3 space-y-2">
-        <Link
-          href="/agents"
-          className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-        >
-          &larr; All Agents
-        </Link>
         <Button
           onClick={() => router.push(chatBase)}
           variant="outline"

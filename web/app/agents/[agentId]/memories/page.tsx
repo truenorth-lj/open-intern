@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, use } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Table,
@@ -15,7 +15,12 @@ import { Badge } from "@/components/ui/badge";
 import { getMemories, deleteMemory, getMemoryStats } from "@/lib/api";
 import type { MemoryEntry, MemoryStats } from "@/lib/types";
 
-export default function MemoriesPage() {
+export default function AgentMemoriesPage({
+  params,
+}: {
+  params: Promise<{ agentId: string }>;
+}) {
+  const { agentId } = use(params);
   const [scope, setScope] = useState("all");
   const [memories, setMemories] = useState<MemoryEntry[]>([]);
   const [total, setTotal] = useState(0);
@@ -24,25 +29,25 @@ export default function MemoriesPage() {
   const limit = 20;
 
   useEffect(() => {
-    getMemoryStats().then(setStats).catch((err) => console.error("Failed to load memory stats:", err));
-  }, []);
+    getMemoryStats(agentId).then(setStats).catch((err) => console.error("Failed to load memory stats:", err));
+  }, [agentId]);
 
   useEffect(() => {
     const s = scope === "all" ? undefined : scope;
-    getMemories(s, limit, page * limit)
+    getMemories(s, limit, page * limit, agentId)
       .then((data) => {
         setMemories(data.items);
         setTotal(data.total);
       })
       .catch((err) => console.error("Failed to load memories:", err));
-  }, [scope, page]);
+  }, [scope, page, agentId]);
 
   async function handleDelete(id: string) {
-    await deleteMemory(id);
+    await deleteMemory(id, agentId);
     setMemories((prev) => prev.filter((m) => m.id !== id));
     setTotal((prev) => prev - 1);
     if (stats) {
-      getMemoryStats().then(setStats).catch((err) => console.error("Failed to refresh memory stats:", err));
+      getMemoryStats(agentId).then(setStats).catch((err) => console.error("Failed to refresh memory stats:", err));
     }
   }
 

@@ -552,7 +552,13 @@ export default function AgentsPage() {
               </p>
               <div className="flex gap-2 pt-2">
                 <Link href={`/agents/${agent.agent_id}/chat`} className="flex-1">
-                  <Button className="w-full">Chat</Button>
+                  <Button variant="outline" className="w-full">Chat</Button>
+                </Link>
+                <Link href={`/agents/${agent.agent_id}/memories`}>
+                  <Button variant="outline" size="sm">Memories</Button>
+                </Link>
+                <Link href={`/agents/${agent.agent_id}/skills`}>
+                  <Button variant="outline" size="sm">Skills</Button>
                 </Link>
                 {isAdmin && (
                   <>

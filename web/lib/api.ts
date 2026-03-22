@@ -91,34 +91,39 @@ export async function deleteThread(threadId: string) {
   return res.json();
 }
 
-export async function getMemories(scope?: string, limit = 50, offset = 0) {
+export async function getMemories(scope?: string, limit = 50, offset = 0, agentId?: string) {
   const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
   if (scope) params.set("scope", scope);
+  if (agentId) params.set("agent_id", agentId);
   const res = await apiFetch(`/memories?${params}`);
   if (!res.ok) throw new Error("Failed to fetch memories");
   return res.json();
 }
 
-export async function getMemoryStats() {
-  const res = await apiFetch("/memories/stats");
+export async function getMemoryStats(agentId?: string) {
+  const params = agentId ? `?agent_id=${agentId}` : "";
+  const res = await apiFetch(`/memories/stats${params}`);
   if (!res.ok) throw new Error("Failed to fetch memory stats");
   return res.json();
 }
 
-export async function getSkills(): Promise<{ skills: Skill[] }> {
-  const res = await apiFetch("/skills");
+export async function getSkills(agentId?: string): Promise<{ skills: Skill[] }> {
+  const params = agentId ? `?agent_id=${agentId}` : "";
+  const res = await apiFetch(`/skills${params}`);
   if (!res.ok) throw new Error("Failed to fetch skills");
   return res.json();
 }
 
-export async function getSkill(name: string): Promise<Skill> {
-  const res = await apiFetch(`/skills/${name}`);
+export async function getSkill(name: string, agentId?: string): Promise<Skill> {
+  const params = agentId ? `?agent_id=${agentId}` : "";
+  const res = await apiFetch(`/skills/${name}${params}`);
   if (!res.ok) throw new Error("Failed to fetch skill");
   return res.json();
 }
 
-export async function deleteMemory(id: string) {
-  const res = await apiFetch(`/memories/${id}`, { method: "DELETE" });
+export async function deleteMemory(id: string, agentId?: string) {
+  const params = agentId ? `?agent_id=${agentId}` : "";
+  const res = await apiFetch(`/memories/${id}${params}`, { method: "DELETE" });
   if (!res.ok) throw new Error("Failed to delete memory");
   return res.json();
 }
