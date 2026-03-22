@@ -170,6 +170,7 @@ class AgentManager:
                 raise ValueError(f"Agent '{agent_id}' already exists")
             session.add(record)
             session.commit()
+            session.expunge(record)
 
         # Initialize the agent runtime
         self._init_agent_from_record(record)
