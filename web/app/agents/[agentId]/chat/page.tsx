@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { sendMessage, listAgents } from "@/lib/api";
+import { sendMessage, listAgents, reloadAgent } from "@/lib/api";
 import type { ChatMessage } from "@/lib/types";
 
 export default function AgentNewChatPage({
@@ -19,6 +19,8 @@ export default function AgentNewChatPage({
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [reloading, setReloading] = useState(false);
+  const [reloadStatus, setReloadStatus] = useState<"" | "ok" | "error">("");
   const scrollRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
 
@@ -75,11 +77,36 @@ export default function AgentNewChatPage({
     }
   }
 
+  async function handleReload() {
+    setReloading(true);
+    setReloadStatus("");
+    try {
+      await reloadAgent(agentId);
+      setReloadStatus("ok");
+    } catch {
+      setReloadStatus("error");
+    } finally {
+      setReloading(false);
+      setTimeout(() => setReloadStatus(""), 3000);
+    }
+  }
+
   return (
     <>
-      <h2 className="text-lg font-bold mb-3">
-        {agentName || agentId}
-      </h2>
+      <div className="flex items-center gap-2 mb-3">
+        <h2 className="text-lg font-bold">
+          {agentName || agentId}
+        </h2>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleReload}
+          disabled={reloading}
+          title="Reload agent runtime"
+        >
+          {reloading ? "Reloading..." : reloadStatus === "ok" ? "Reloaded!" : reloadStatus === "error" ? "Failed" : "Reload"}
+        </Button>
+      </div>
 
       <ScrollArea className="flex-1 mb-4">
         <div className="space-y-4 pr-4">

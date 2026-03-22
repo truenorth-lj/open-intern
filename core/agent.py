@@ -58,10 +58,10 @@ def _create_llm(config: AppConfig):
     else:
         # Native LangChain providers (Claude, OpenAI, Ollama)
         model_string = _resolve_model_string(config)
-        return init_chat_model(
-            model_string,
-            temperature=config.llm.temperature,
-        )
+        kwargs: dict = {"temperature": config.llm.temperature}
+        if config.llm.api_key:
+            kwargs["api_key"] = config.llm.api_key
+        return init_chat_model(model_string, **kwargs)
 
 
 def _resolve_model_string(config: AppConfig) -> str:

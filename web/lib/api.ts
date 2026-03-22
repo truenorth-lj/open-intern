@@ -236,6 +236,15 @@ export async function testTelegramConnection(
   return res.json();
 }
 
+export async function reloadAgent(agentId: string) {
+  const res = await apiFetch(`/agents/${agentId}/reload`, { method: "POST" });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to reload agent");
+  }
+  return res.json();
+}
+
 export async function deleteAgent(agentId: string) {
   const res = await apiFetch(`/agents/${agentId}`, { method: "DELETE" });
   if (!res.ok) {

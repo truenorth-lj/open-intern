@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { sendMessage, getThreadTokenUsage, listAgents } from "@/lib/api";
+import { sendMessage, getThreadTokenUsage, listAgents, reloadAgent } from "@/lib/api";
 import { formatTokenCount } from "@/lib/utils";
 import type { ChatMessage } from "@/lib/types";
 
@@ -19,6 +19,8 @@ export default function AgentThreadPage({
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [reloading, setReloading] = useState(false);
+  const [reloadStatus, setReloadStatus] = useState<"" | "ok" | "error">("");
   const [tokenUsage, setTokenUsage] = useState<{
     input_tokens: number;
     output_tokens: number;
@@ -106,7 +108,30 @@ export default function AgentThreadPage({
   return (
     <>
       <div className="flex items-center justify-between mb-2">
-        <h2 className="text-lg font-bold">{agentName || agentId}</h2>
+        <div className="flex items-center gap-2">
+          <h2 className="text-lg font-bold">{agentName || agentId}</h2>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={async () => {
+              setReloading(true);
+              setReloadStatus("");
+              try {
+                await reloadAgent(agentId);
+                setReloadStatus("ok");
+              } catch {
+                setReloadStatus("error");
+              } finally {
+                setReloading(false);
+                setTimeout(() => setReloadStatus(""), 3000);
+              }
+            }}
+            disabled={reloading}
+            title="Reload agent runtime"
+          >
+            {reloading ? "Reloading..." : reloadStatus === "ok" ? "Reloaded!" : reloadStatus === "error" ? "Failed" : "Reload"}
+          </Button>
+        </div>
         {tokenUsage && tokenUsage.total_tokens > 0 && (
           <div className="flex gap-4 text-xs text-muted-foreground">
             <span>Tokens: {formatTokenCount(tokenUsage.total_tokens)}</span>
