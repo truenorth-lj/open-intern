@@ -928,14 +928,18 @@ def get_token_usage_timeseries(
     store = _get_memory_store(agent_id or "default")
     with store._session() as session:
         day_col = cast(TokenUsageRecord.created_at, Date).label("day")
-        q = session.query(
-            day_col,
-            TokenUsageRecord.agent_id,
-            func.coalesce(func.sum(TokenUsageRecord.input_tokens), 0).label("input_tokens"),
-            func.coalesce(func.sum(TokenUsageRecord.output_tokens), 0).label("output_tokens"),
-            func.coalesce(func.sum(TokenUsageRecord.total_tokens), 0).label("total_tokens"),
-            func.count(TokenUsageRecord.id).label("request_count"),
-        ).group_by(day_col, TokenUsageRecord.agent_id).order_by(day_col)
+        q = (
+            session.query(
+                day_col,
+                TokenUsageRecord.agent_id,
+                func.coalesce(func.sum(TokenUsageRecord.input_tokens), 0).label("input_tokens"),
+                func.coalesce(func.sum(TokenUsageRecord.output_tokens), 0).label("output_tokens"),
+                func.coalesce(func.sum(TokenUsageRecord.total_tokens), 0).label("total_tokens"),
+                func.count(TokenUsageRecord.id).label("request_count"),
+            )
+            .group_by(day_col, TokenUsageRecord.agent_id)
+            .order_by(day_col)
+        )
 
         if agent_id:
             q = q.filter(TokenUsageRecord.agent_id == agent_id)
@@ -957,14 +961,16 @@ def get_token_usage_timeseries(
 
         points = []
         for row in q.all():
-            points.append({
-                "date": row.day.isoformat() if row.day else "",
-                "agent_id": row.agent_id,
-                "input_tokens": row.input_tokens,
-                "output_tokens": row.output_tokens,
-                "total_tokens": row.total_tokens,
-                "request_count": row.request_count,
-            })
+            points.append(
+                {
+                    "date": row.day.isoformat() if row.day else "",
+                    "agent_id": row.agent_id,
+                    "input_tokens": row.input_tokens,
+                    "output_tokens": row.output_tokens,
+                    "total_tokens": row.total_tokens,
+                    "request_count": row.request_count,
+                }
+            )
 
         return {"points": points}
 
