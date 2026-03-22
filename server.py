@@ -81,12 +81,14 @@ def get_agent(agent_id: str | None = None) -> OpenInternAgent:
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     """FastAPI lifespan: pause all E2B sandboxes on shutdown."""
+    import asyncio
+
     yield
     # --- Shutdown ---
     mgr: AgentManager | None = getattr(app.state, "agent_manager", None)
     if mgr:
         logger.info("Shutting down: pausing all E2B sandboxes...")
-        mgr.pause_all_sandboxes()
+        await asyncio.to_thread(mgr.pause_all_sandboxes)
         logger.info("All E2B sandboxes paused.")
 
 
