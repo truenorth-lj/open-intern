@@ -1,15 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 export async function middleware(request: NextRequest) {
-  // Read at invocation time (not module level) so runtime env vars work
-  const dashboardPassword = process.env.DASHBOARD_PASSWORD || "";
-
-  // No password set = no auth required (local dev)
-  if (!dashboardPassword) {
-    return NextResponse.next();
-  }
-
-  // Allow login page and auth API
+  // Allow login page and auth API without token
   const { pathname } = request.nextUrl;
   if (pathname === "/login" || pathname.startsWith("/api/auth/")) {
     return NextResponse.next();
@@ -23,7 +15,6 @@ export async function middleware(request: NextRequest) {
     if (!legacySession) {
       return NextResponse.redirect(new URL("/login", request.url));
     }
-    // Legacy cookie exists — let it through (will be migrated on next login)
     return NextResponse.next();
   }
 
