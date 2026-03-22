@@ -164,8 +164,11 @@ def delete_agent(agent_id: str, admin: dict = Depends(require_admin)):
 
 
 class TelegramTestRequest(BaseModel):
-    chat_id: str
-    message: str = "Hello from open_intern! Your Telegram connection is working."
+    chat_id: str = Field(..., pattern=r"^-?\d+$")
+    message: str = Field(
+        default="Hello from open_intern! Your Telegram connection is working.",
+        max_length=4096,
+    )
 
 
 @router.post("/agents/{agent_id}/test-telegram")

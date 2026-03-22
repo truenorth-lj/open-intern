@@ -90,6 +90,9 @@ export default function AgentsPage() {
 
   function handleEditAgent(agent: AgentInfo) {
     setEditingAgent(agent.agent_id);
+    setTestChatId("");
+    setTestMsg("");
+    setTestLoading(false);
     setAgentForm({
       agent_id: agent.agent_id,
       name: agent.name,
