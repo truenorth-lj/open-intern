@@ -154,6 +154,7 @@ export interface AgentInfo {
   llm_temperature: number;
   llm_api_key: string;
   telegram_token: string;
+  platform_type: string;
   sandbox_enabled: boolean;
   is_active: boolean;
   created_at: string;
@@ -203,6 +204,25 @@ export async function updateAgent(
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.detail || "Failed to update agent");
+  }
+  return res.json();
+}
+
+export async function testTelegramConnection(
+  agentId: string,
+  chatId: string,
+  message?: string,
+): Promise<{ ok: boolean; bot_username: string; chat_id: string; message: string }> {
+  const body: Record<string, string> = { chat_id: chatId };
+  if (message) body.message = message;
+  const res = await apiFetch(`/agents/${agentId}/test-telegram`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to test Telegram connection");
   }
   return res.json();
 }

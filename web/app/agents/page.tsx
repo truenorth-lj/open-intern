@@ -14,6 +14,7 @@ import {
   createAgent,
   updateAgent,
   deleteAgent,
+  testTelegramConnection,
   type AgentInfo,
 } from "@/lib/api";
 
@@ -29,6 +30,13 @@ const LLM_PRESETS: Record<string, { provider: string; model: string }> = {
   "OpenAI o3": { provider: "openai", model: "o3" },
 };
 
+const PLATFORM_OPTIONS = [
+  { value: "", label: "None (Web only)" },
+  { value: "telegram", label: "Telegram" },
+  { value: "discord", label: "Discord" },
+  { value: "lark", label: "Lark" },
+];
+
 const defaultAgentForm = {
   agent_id: "",
   name: "",
@@ -39,6 +47,8 @@ const defaultAgentForm = {
   llm_temperature: 0.7,
   llm_api_key: "",
   sandbox_enabled: true,
+  platform_type: "",
+  telegram_token: "",
 };
 
 export default function AgentsPage() {
@@ -51,6 +61,9 @@ export default function AgentsPage() {
   const [loadError, setLoadError] = useState("");
   const [editingAgent, setEditingAgent] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const [testChatId, setTestChatId] = useState("");
+  const [testMsg, setTestMsg] = useState("");
+  const [testLoading, setTestLoading] = useState(false);
 
   const isAdmin = user?.role === "admin";
 
@@ -87,6 +100,8 @@ export default function AgentsPage() {
       llm_temperature: agent.llm_temperature,
       llm_api_key: "",
       sandbox_enabled: agent.sandbox_enabled,
+      platform_type: agent.platform_type || "",
+      telegram_token: "",
     });
     setAgentMsg("");
     setShowForm(true);
@@ -105,10 +120,11 @@ export default function AgentsPage() {
     }
     try {
       if (editingAgent) {
-        const { agent_id: _id, llm_api_key, ...updates } = agentForm;
+        const { agent_id: _id, llm_api_key, telegram_token, ...updates } = agentForm;
         void _id;
         const payload: Record<string, unknown> = { ...updates };
         if (llm_api_key) payload.llm_api_key = llm_api_key;
+        if (telegram_token) payload.telegram_token = telegram_token;
         await updateAgent(editingAgent, payload);
         setAgentMsg("Agent updated. Restart to apply runtime changes.");
       } else {
@@ -365,6 +381,113 @@ export default function AgentsPage() {
                 </div>
               </div>
 
+              {/* Platform Connection */}
+              <div className="space-y-3 border-t pt-4">
+                <Label className="text-base font-semibold">Platform Connection</Label>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="platform-type">Platform</Label>
+                    <select
+                      id="platform-type"
+                      value={agentForm.platform_type}
+                      onChange={(e) =>
+                        setAgentForm((f) => ({
+                          ...f,
+                          platform_type: e.target.value,
+                        }))
+                      }
+                      className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs"
+                    >
+                      {PLATFORM_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {agentForm.platform_type === "telegram" && (
+                  <div className="space-y-3">
+                    <div className="space-y-2">
+                      <Label htmlFor="telegram-token">Telegram Bot Token</Label>
+                      <Input
+                        id="telegram-token"
+                        type="password"
+                        placeholder={editingAgent ? "(leave blank to keep current token)" : "Enter Telegram bot token..."}
+                        value={agentForm.telegram_token}
+                        onChange={(e) =>
+                          setAgentForm((f) => ({
+                            ...f,
+                            telegram_token: e.target.value,
+                          }))
+                        }
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Get a bot token from{" "}
+                        <a
+                          href="https://t.me/BotFather"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="underline"
+                        >
+                          @BotFather
+                        </a>
+                        .{" "}
+                        {editingAgent && (agents.find((a) => a.agent_id === editingAgent)?.telegram_token === "***"
+                          ? "Token is configured."
+                          : "No token configured yet.")}
+                      </p>
+                    </div>
+
+                    {/* Test Telegram Connection */}
+                    {editingAgent && agents.find((a) => a.agent_id === editingAgent)?.telegram_token === "***" && (
+                      <div className="space-y-2 rounded-md border p-3 bg-muted/30">
+                        <Label className="text-sm font-medium">Test Connection</Label>
+                        <div className="grid grid-cols-2 gap-2">
+                          <Input
+                            placeholder="Chat ID (e.g. 123456789)"
+                            value={testChatId}
+                            onChange={(e) => setTestChatId(e.target.value)}
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            disabled={!testChatId.trim() || testLoading}
+                            onClick={async () => {
+                              setTestLoading(true);
+                              setTestMsg("");
+                              try {
+                                const result = await testTelegramConnection(editingAgent, testChatId.trim());
+                                setTestMsg(`Sent via @${result.bot_username}`);
+                              } catch (err) {
+                                setTestMsg(err instanceof Error ? err.message : "Test failed");
+                              } finally {
+                                setTestLoading(false);
+                              }
+                            }}
+                          >
+                            {testLoading ? "Sending..." : "Send Test Message"}
+                          </Button>
+                        </div>
+                        {testMsg && (
+                          <p className={`text-xs ${testMsg.startsWith("Sent") ? "text-green-600" : "text-destructive"}`}>
+                            {testMsg}
+                          </p>
+                        )}
+                        <p className="text-xs text-muted-foreground">
+                          Enter your Telegram chat ID and click to send a test message. You can get your chat ID by messaging{" "}
+                          <a href="https://t.me/userinfobot" target="_blank" rel="noopener noreferrer" className="underline">
+                            @userinfobot
+                          </a>{" "}
+                          on Telegram.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
               <div className="flex gap-2 pt-2">
                 <Button type="submit">
                   {editingAgent ? "Update Agent" : "Create Agent"}
@@ -408,11 +531,16 @@ export default function AgentsPage() {
               </div>
             </CardHeader>
             <CardContent className="flex-1 flex flex-col gap-3">
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <Badge variant="secondary">{agent.role}</Badge>
                 <Badge variant="secondary">
                   {agent.llm_provider}:{agent.llm_model}
                 </Badge>
+                {agent.platform_type && (
+                  <Badge variant="outline">
+                    {agent.platform_type}
+                  </Badge>
+                )}
               </div>
               <p className="text-sm text-muted-foreground line-clamp-2 flex-1">
                 {agent.personality}
