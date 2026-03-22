@@ -16,15 +16,15 @@ from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import Session
 
+from core.database import get_session_factory
+from core.exceptions import ConfigurationError
 from memory.store import UserAgentAccess, UserRecord
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/dashboard/auth", tags=["auth"])
 
-_engine = None
 _session_factory = None
 
 # JWT settings
@@ -33,17 +33,20 @@ JWT_EXPIRY_SECONDS = 60 * 60 * 24 * 7  # 7 days
 
 
 def init_auth(database_url: str):
-    global _engine, _session_factory
-    sa_url = database_url
-    if sa_url.startswith("postgresql+psycopg://"):
-        sa_url = sa_url.replace("postgresql+psycopg://", "postgresql://", 1)
-    _engine = create_engine(sa_url, pool_size=3, max_overflow=5, pool_pre_ping=True)
-    _session_factory = sessionmaker(bind=_engine)
+    global _session_factory, JWT_SECRET
+    _session_factory = get_session_factory(database_url)
+    # Fail-fast: validate AUTH_SECRET at init time, not at first JWT creation
+    JWT_SECRET = os.environ.get("AUTH_SECRET", "")
+    if not JWT_SECRET:
+        logger.warning(
+            "AUTH_SECRET not set — authentication will fail. "
+            "Set AUTH_SECRET environment variable before using the dashboard."
+        )
 
 
 def _get_session() -> Session:
     if _session_factory is None:
-        raise RuntimeError("Auth not initialized")
+        raise ConfigurationError("Auth not initialized — call init_auth() first")
     return _session_factory()
 
 

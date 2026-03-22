@@ -14,9 +14,8 @@ from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 from langchain_core.tools import tool
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 
+from core.database import get_engine, get_session_factory
 from memory.store import ScheduledJobRecord
 
 if TYPE_CHECKING:
@@ -29,11 +28,8 @@ class CronScheduler:
     """Manages scheduled jobs backed by PostgreSQL and executed via APScheduler."""
 
     def __init__(self, database_url: str):
-        sa_url = database_url
-        if sa_url.startswith("postgresql+psycopg://"):
-            sa_url = sa_url.replace("postgresql+psycopg://", "postgresql://", 1)
-        self._engine = create_engine(sa_url, pool_size=5, max_overflow=10, pool_pre_ping=True)
-        self._session_factory = sessionmaker(bind=self._engine)
+        self._engine = get_engine(database_url)
+        self._session_factory = get_session_factory(database_url)
         self._scheduler = AsyncIOScheduler()
         self._agent_manager: AgentManager | None = None
 
@@ -114,7 +110,7 @@ class CronScheduler:
             }
             # isolated: fresh thread each run; persistent: reuse same thread
             thread_id = f"cron:{job_id}:{uuid4()}" if isolated else f"cron:{job_id}"
-            response = await agent.chat(prompt, context=context, thread_id=thread_id)
+            response, _usage = await agent.chat(prompt, context=context, thread_id=thread_id)
 
             # Deliver response to platform if configured
             if delivery_platform and delivery_chat_id:

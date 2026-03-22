@@ -11,7 +11,9 @@ from langchain.chat_models import init_chat_model
 from langchain_core.tools import tool
 
 from core.config import AppConfig
+from core.exceptions import AgentNotInitializedError
 from core.identity import build_system_prompt
+from core.types import ChatContext, TokenUsage
 from memory.store import MemoryEntry, MemoryScope, MemoryStore
 from safety.permissions import ActionVerdict, SafetyMiddleware
 
@@ -282,8 +284,8 @@ class OpenInternAgent:
         )
 
     async def chat(
-        self, message: str, context: dict[str, Any] | None = None, thread_id: str | None = None
-    ) -> tuple[str, dict[str, int]]:
+        self, message: str, context: ChatContext | None = None, thread_id: str | None = None
+    ) -> tuple[str, TokenUsage]:
         """Send a message to the agent and get a response.
 
         Args:
@@ -292,10 +294,10 @@ class OpenInternAgent:
             thread_id: Optional thread ID for conversation continuity.
 
         Returns:
-            Tuple of (response text, token usage dict).
+            Tuple of (response text, token usage).
         """
         if self._agent is None:
-            raise RuntimeError("Agent not initialized. Call initialize() first.")
+            raise AgentNotInitializedError(self.agent_id)
 
         context = context or {}
 
@@ -307,7 +309,9 @@ class OpenInternAgent:
             user_id=context.get("user_id", ""),
         )
         if verdict == ActionVerdict.DENY:
-            return "I'm not allowed to respond in this context."
+            return "I'm not allowed to respond in this context.", TokenUsage(
+                input_tokens=0, output_tokens=0, total_tokens=0
+            )
 
         # Build context-aware message
         enriched_message = message
@@ -391,7 +395,7 @@ class OpenInternAgent:
         return str(content)
 
     @staticmethod
-    def _extract_token_usage(result: Any) -> dict[str, int]:
+    def _extract_token_usage(result: Any) -> TokenUsage:
         """Extract total token usage from all AI messages in the result."""
         input_tokens = 0
         output_tokens = 0
@@ -401,15 +405,13 @@ class OpenInternAgent:
                 if usage:
                     input_tokens += usage.get("input_tokens", 0)
                     output_tokens += usage.get("output_tokens", 0)
-        return {
-            "input_tokens": input_tokens,
-            "output_tokens": output_tokens,
-            "total_tokens": input_tokens + output_tokens,
-        }
+        return TokenUsage(
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            total_tokens=input_tokens + output_tokens,
+        )
 
-    def _store_conversation(
-        self, user_message: str, response: str, context: dict[str, Any]
-    ) -> None:
+    def _store_conversation(self, user_message: str, response: str, context: ChatContext) -> None:
         """Store the conversation turn to memory."""
         scope = MemoryScope.PERSONAL if context.get("is_dm") else MemoryScope.CHANNEL
         scope_id = context.get("channel_id", "")

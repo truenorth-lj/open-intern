@@ -7,10 +7,11 @@ import re
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 from api.auth import get_current_user, get_user_accessible_agents, require_admin
 from core.config import AppConfig
+from core.exceptions import AgentNotFoundError, DuplicateAgentError
 from memory.store import MemoryRecord, MemoryScope, MemoryStore, ThreadMetaRecord, TokenUsageRecord
 from scripts.seed_skills import list_skills as _list_skills
 
@@ -51,17 +52,17 @@ def _get_memory_store(agent_id: str | None = None) -> MemoryStore:
 
 
 class AgentCreate(BaseModel):
-    agent_id: str
-    name: str
+    agent_id: str = Field(..., pattern=r"^[a-zA-Z0-9_-]+$")
+    name: str = Field(..., min_length=1, max_length=100)
     role: str = "AI Employee"
     personality: str = "You are a helpful AI employee."
     avatar_url: str = ""
     llm_provider: str = "claude"
     llm_model: str = "claude-sonnet-4-6"
-    llm_temperature: float = 0.7
+    llm_temperature: float = Field(0.7, ge=0.0, le=2.0)
     llm_api_key: str = ""
-    max_tokens_per_action: int = 4096
-    daily_cost_budget_usd: float = 10.0
+    max_tokens_per_action: int = Field(4096, ge=1)
+    daily_cost_budget_usd: float = Field(10.0, ge=0.0)
     telegram_token: str = ""
     discord_token: str = ""
     lark_app_id: str = ""
@@ -72,8 +73,8 @@ class AgentCreate(BaseModel):
     behavior_config: str = "{}"
     safety_config: str = "{}"
     embedding_model: str = "text-embedding-3-small"
-    max_retrieval_results: int = 10
-    importance_decay_days: int = 90
+    max_retrieval_results: int = Field(10, ge=1)
+    importance_decay_days: int = Field(90, ge=1)
     sandbox_enabled: bool = True
 
 
@@ -120,8 +121,10 @@ def create_agent(body: AgentCreate, admin: dict = Depends(require_admin)):
     try:
         result = mgr.create_agent(**body.model_dump())
         return result
-    except ValueError as e:
+    except DuplicateAgentError as e:
         raise HTTPException(status_code=409, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
 
 
 @router.get("/agents/{agent_id}")
@@ -146,7 +149,7 @@ def update_agent(agent_id: str, body: AgentUpdate, admin: dict = Depends(require
     try:
         result = mgr.update_agent(agent_id, **updates)
         return result
-    except ValueError as e:
+    except AgentNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
 
@@ -156,7 +159,7 @@ def delete_agent(agent_id: str, admin: dict = Depends(require_admin)):
     try:
         result = mgr.delete_agent(agent_id)
         return result
-    except ValueError as e:
+    except AgentNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
 

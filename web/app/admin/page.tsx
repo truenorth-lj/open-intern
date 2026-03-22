@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { listAgents, type AgentInfo } from "@/lib/api";
+import { apiFetch, listAgents, type AgentInfo } from "@/lib/api";
 
 interface User {
   user_id: string;
@@ -18,17 +18,6 @@ interface User {
   is_active: boolean;
   created_at: string;
   agent_ids: string[];
-}
-
-const BASE = "/api/dashboard";
-
-async function apiFetch(path: string, init?: RequestInit) {
-  const res = await fetch(`${BASE}${path}`, init);
-  if (res.status === 401) {
-    window.location.href = "/login";
-    throw new Error("Unauthorized");
-  }
-  return res;
 }
 
 export default function AdminPage() {

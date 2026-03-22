@@ -6,13 +6,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { sendMessage, getThreadTokenUsage, listAgents } from "@/lib/api";
+import { formatTokenCount } from "@/lib/utils";
 import type { ChatMessage } from "@/lib/types";
-
-function formatTokenCount(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
-  return String(n);
-}
 
 export default function AgentThreadPage({
   params,

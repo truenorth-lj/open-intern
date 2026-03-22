@@ -47,6 +47,7 @@ export default function AgentsPage() {
   const [showForm, setShowForm] = useState(false);
   const [agentForm, setAgentForm] = useState(defaultAgentForm);
   const [agentMsg, setAgentMsg] = useState("");
+  const [loadError, setLoadError] = useState("");
   const [editingAgent, setEditingAgent] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
 
@@ -54,9 +55,10 @@ export default function AgentsPage() {
 
   useEffect(() => {
     if (!authLoading) {
+      setLoadError("");
       listAgents()
         .then((data) => setAgents(data.agents))
-        .catch(() => {})
+        .catch((err) => setLoadError(err.message || "Failed to load agents"))
         .finally(() => setLoading(false));
     }
   }, [authLoading, reloadKey]);
@@ -143,6 +145,14 @@ export default function AgentsPage() {
 
   if (authLoading || loading) {
     return <p className="text-muted-foreground">Loading...</p>;
+  }
+
+  if (loadError) {
+    return (
+      <div className="text-destructive text-sm p-4">
+        Failed to load agents: {loadError}
+      </div>
+    );
   }
 
   const activeAgents = agents.filter((a) => a.is_active);

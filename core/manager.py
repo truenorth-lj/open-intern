@@ -4,11 +4,9 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
-
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 
 from core.agent import OpenInternAgent
 from core.config import (
@@ -20,12 +18,16 @@ from core.config import (
     SafetyConfig,
 )
 from core.crypto import decrypt, encrypt
+from core.database import get_engine, get_session_factory
+from core.exceptions import AgentNotFoundError, DuplicateAgentError
 from memory.store import AgentRecord, SystemSettingRecord
 
 if TYPE_CHECKING:
     from core.scheduler import CronScheduler
 
 logger = logging.getLogger(__name__)
+
+_AGENT_ID_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
 
 # Fields that contain encrypted secrets on AgentRecord
 _ENCRYPTED_FIELDS = {
@@ -47,18 +49,8 @@ class AgentManager:
         self._agents: dict[str, OpenInternAgent] = {}
         self._scheduler = scheduler
 
-        # DB connection for agent registry
-        db_url = config.database_url
-        # Use psycopg2 (default) to avoid psycopg3 conflicts with LangGraph
-        if db_url.startswith("postgresql+psycopg://"):
-            db_url = db_url.replace("postgresql+psycopg://", "postgresql://", 1)
-        self._engine = create_engine(
-            db_url,
-            pool_size=5,
-            max_overflow=10,
-            pool_pre_ping=True,
-        )
-        self._session_factory = sessionmaker(bind=self._engine)
+        self._engine = get_engine(config.database_url)
+        self._session_factory = get_session_factory(config.database_url)
 
     def initialize(self) -> None:
         """Load all active agents from DB. Tables managed by Alembic migrations."""
@@ -247,6 +239,21 @@ class AgentManager:
         sandbox_enabled: bool = True,
     ) -> dict:
         """Create a new agent in DB and initialize it. Secrets are encrypted before storage."""
+        # Validate inputs
+        if not _AGENT_ID_RE.match(agent_id):
+            raise ValueError(
+                f"Invalid agent_id '{agent_id}': "
+                "must contain only alphanumeric, hyphens, underscores"
+            )
+        if daily_cost_budget_usd < 0:
+            raise ValueError("daily_cost_budget_usd must be non-negative")
+        if importance_decay_days < 1:
+            raise ValueError("importance_decay_days must be at least 1")
+        if not (0.0 <= llm_temperature <= 2.0):
+            raise ValueError("llm_temperature must be between 0.0 and 2.0")
+        if max_tokens_per_action < 1:
+            raise ValueError("max_tokens_per_action must be at least 1")
+
         now = datetime.now(timezone.utc)
         record = AgentRecord(
             agent_id=agent_id,
@@ -280,7 +287,7 @@ class AgentManager:
         with self._session_factory() as session:
             existing = session.query(AgentRecord).filter_by(agent_id=agent_id).first()
             if existing:
-                raise ValueError(f"Agent '{agent_id}' already exists")
+                raise DuplicateAgentError(agent_id)
             session.add(record)
             session.commit()
             # Expunge before session closes so record stays usable
@@ -296,7 +303,7 @@ class AgentManager:
         with self._session_factory() as session:
             record = session.query(AgentRecord).filter_by(agent_id=agent_id).first()
             if not record:
-                raise ValueError(f"Agent '{agent_id}' not found")
+                raise AgentNotFoundError(agent_id)
             allowed_fields = {
                 "name",
                 "role",
@@ -336,58 +343,37 @@ class AgentManager:
         with self._session_factory() as session:
             record = session.query(AgentRecord).filter_by(agent_id=agent_id).first()
             if not record:
-                raise ValueError(f"Agent '{agent_id}' not found")
+                raise AgentNotFoundError(agent_id)
             record.is_active = False
             record.updated_at = datetime.now(timezone.utc)
             session.commit()
         logger.info(f"Deactivated agent: {agent_id}")
         return {"agent_id": agent_id, "status": "deactivated"}
 
-    def get_telegram_agents(self) -> dict[str, AgentRecord]:
-        """Get all active agents that have a Telegram token configured."""
+    def _get_platform_agents(self, *encrypted_fields: str) -> dict[str, AgentRecord]:
+        """Get active agents that have all specified encrypted fields non-empty."""
         with self._session_factory() as session:
-            records = (
-                session.query(AgentRecord)
-                .filter_by(is_active=True)
-                .filter(AgentRecord.telegram_token_encrypted != "")
-                .all()
-            )
+            q = session.query(AgentRecord).filter_by(is_active=True)
+            for field_name in encrypted_fields:
+                q = q.filter(getattr(AgentRecord, field_name) != "")
+            records = q.all()
             result = {}
             for r in records:
                 session.expunge(r)
                 result[r.agent_id] = r
             return result
+
+    def get_telegram_agents(self) -> dict[str, AgentRecord]:
+        """Get all active agents that have a Telegram token configured."""
+        return self._get_platform_agents("telegram_token_encrypted")
 
     def get_discord_agents(self) -> dict[str, AgentRecord]:
         """Get all active agents that have a Discord token configured."""
-        with self._session_factory() as session:
-            records = (
-                session.query(AgentRecord)
-                .filter_by(is_active=True)
-                .filter(AgentRecord.discord_token_encrypted != "")
-                .all()
-            )
-            result = {}
-            for r in records:
-                session.expunge(r)
-                result[r.agent_id] = r
-            return result
+        return self._get_platform_agents("discord_token_encrypted")
 
     def get_lark_agents(self) -> dict[str, AgentRecord]:
         """Get all active agents that have Lark credentials configured."""
-        with self._session_factory() as session:
-            records = (
-                session.query(AgentRecord)
-                .filter_by(is_active=True)
-                .filter(AgentRecord.lark_app_id_encrypted != "")
-                .filter(AgentRecord.lark_app_secret_encrypted != "")
-                .all()
-            )
-            result = {}
-            for r in records:
-                session.expunge(r)
-                result[r.agent_id] = r
-            return result
+        return self._get_platform_agents("lark_app_id_encrypted", "lark_app_secret_encrypted")
 
     # --- System Settings ---
 
