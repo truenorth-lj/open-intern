@@ -140,11 +140,47 @@ git checkout main && git pull --rebase
 git branch -d <branch_name> 2>/dev/null || true
 ```
 
-### 7d. Report to the user
+### 7d. Monitor Deployment
+
+After merge, monitor the Zeabur deployment until it's running:
+
+```bash
+# Poll deployment status (check every 15s, max 5 minutes)
+zeabur deployment list --service-id 69beada1ceee47754dac1038 --env-id 69beabb576bc68ba374ca4da -i=false --json | head -30
+```
+
+- Look for a deployment with the merged commit SHA and `"status": "RUNNING"`
+- If `"status": "BUILDING"` or `"status": "DEPLOYING"`, wait and re-check
+- If `"status": "FAILED"`, check logs and report the error:
+  ```bash
+  zeabur deployment log --service-id 69beada1ceee47754dac1038 --env-id 69beabb576bc68ba374ca4da -t runtime -i=false
+  ```
+- Once RUNNING, verify the app responds:
+  ```bash
+  curl -s https://open-intern.zeabur.app/api/dashboard/status
+  ```
+
+### 7e. Post-Deploy Testing
+
+After deployment is confirmed running, test the feature in the browser:
+
+1. Open `https://open-intern.zeabur.app` in Chrome using browser tools
+2. Navigate to the relevant page for the feature/fix
+3. Verify the change works as expected (check UI renders, API calls succeed, no console errors)
+4. Take a screenshot as evidence
+5. If the feature involves interactive elements, test the main user flows
+
+If post-deploy testing reveals issues:
+- Report the issue to the user
+- If it's a quick fix, create a follow-up PR
+
+### 7f. Report to the user
 - Total review rounds completed
 - Summary of all fixes made
 - Any comments intentionally skipped and why
-- Confirm: PR merged and branches cleaned up
+- Deployment status (success/failure)
+- Post-deploy test results (with screenshot)
+- Confirm: PR merged, deployed, and tested
 
 ## Key Rules
 
