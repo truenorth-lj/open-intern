@@ -8,7 +8,6 @@ from typing import Any
 import httpx
 
 from core.agent import OpenInternAgent
-from core.config import AppConfig
 from integrations.base import ChatEvent, Integration
 
 logger = logging.getLogger(__name__)
@@ -21,10 +20,10 @@ FEISHU_API = "https://open.feishu.cn/open-apis"
 class LarkBot(Integration):
     """Lark/Feishu bot integration using Open API."""
 
-    def __init__(self, agent: OpenInternAgent, config: AppConfig):
+    def __init__(self, agent: OpenInternAgent, app_id: str, app_secret: str):
         super().__init__(agent)
-        self.app_id = config.platform_config.lark.app_id
-        self.app_secret = config.platform_config.lark.app_secret
+        self.app_id = app_id
+        self.app_secret = app_secret
         self._tenant_access_token: str = ""
         self._bot_id: str = ""
         self._running = False

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-import shutil
+import json
 from pathlib import Path
 
 import typer
@@ -20,76 +20,45 @@ console = Console()
 
 
 @app.command()
-def init(
-    config_path: str = typer.Option(
-        "config/agent.yaml", "--config", "-c", help="Path to create config file"
-    ),
-):
-    """Initialize a new open_intern agent configuration."""
-    target = Path(config_path)
-    example = Path("config/agent.example.yaml")
-
-    if target.exists():
-        overwrite = typer.confirm(f"{target} already exists. Overwrite?", default=False)
-        if not overwrite:
-            console.print("[yellow]Aborted.[/yellow]")
-            raise typer.Exit()
-
-    if example.exists():
-        target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy(example, target)
-        console.print(f"[green]Config created at {target}[/green]")
+def init():
+    """Initialize environment. Checks .env exists with required variables."""
+    env_file = Path(".env")
+    if env_file.exists():
+        console.print("[green].env file already exists.[/green]")
     else:
-        console.print("[red]Example config not found. Creating default...[/red]")
-        target.parent.mkdir(parents=True, exist_ok=True)
-        import yaml
+        example = Path(".env.example")
+        if example.exists():
+            import shutil
 
-        from core.config import AppConfig
-
-        target.write_text(yaml.dump(AppConfig().model_dump(), default_flow_style=False))
-        console.print(f"[green]Default config created at {target}[/green]")
+            shutil.copy(example, env_file)
+            console.print("[green].env created from .env.example[/green]")
+        else:
+            console.print("[red].env.example not found. Create a .env file manually.[/red]")
+            raise typer.Exit(1)
 
     console.print()
     console.print("[bold]Next steps:[/bold]")
-    console.print(f"  1. Edit {target} with your credentials")
-    console.print("  2. Run: open_intern start")
+    console.print("  1. Edit .env with your DATABASE_URL and ENCRYPTION_KEY")
+    console.print("  2. Run: alembic upgrade head")
+    console.print("  3. Run: open_intern start")
     console.print()
-    console.print("[dim]Required credentials:[/dim]")
-    console.print("  - LLM API key (set ANTHROPIC_API_KEY or OPENAI_API_KEY env var)")
-    console.print("  - Lark App ID/Secret or Discord Bot Token")
+    console.print("[dim]Generate an encryption key with:[/dim]")
+    console.print(
+        "  python -c 'from cryptography.fernet "
+        "import Fernet; print(Fernet.generate_key().decode())'"
+    )
 
 
 @app.command()
 def start(
-    config_path: str = typer.Option(
-        "config/agent.yaml", "--config", "-c", help="Path to config file"
-    ),
-    web: bool = typer.Option(
-        False, "--web", "-w", help="Run in web-only mode (dashboard on port 8000)"
+    platform: str = typer.Option(
+        "web", "--platform", "-p", help="Platform to run: web|telegram|discord|lark"
     ),
 ):
     """Start the open_intern agent."""
-    config_file = Path(config_path)
-    if not config_file.exists():
-        console.print(f"[red]Config file not found: {config_path}[/red]")
-        console.print("Run 'open_intern init' first.")
-        raise typer.Exit(1)
-
-    if web:
-        # Override platform to web-only mode (atomic write)
-        import yaml
-
-        raw = yaml.safe_load(config_file.read_text()) or {}
-        raw.setdefault("platform", {})["primary"] = "web"
-        tmp_file = config_file.with_suffix(".yaml.tmp")
-        tmp_file.write_text(
-            yaml.dump(raw, default_flow_style=False, sort_keys=False, allow_unicode=True)
-        )
-        tmp_file.replace(config_file)
-
     console.print(
         Panel.fit(
-            "[bold green]Starting open_intern[/bold green]",
+            f"[bold green]Starting open_intern[/bold green] (platform: {platform})",
             subtitle="Dashboard: localhost:3000 | API: localhost:8000 | Ctrl+C to stop",
         )
     )
@@ -97,40 +66,28 @@ def start(
     from server import run_agent
 
     try:
-        asyncio.run(run_agent(config_path))
+        asyncio.run(run_agent(platform))
     except KeyboardInterrupt:
         console.print("\n[yellow]Shutting down...[/yellow]")
 
 
 @app.command()
-def status(
-    config_path: str = typer.Option(
-        "config/agent.yaml", "--config", "-c", help="Path to config file"
-    ),
-):
+def status():
     """Show agent status and memory statistics."""
-    from core.config import load_config
+    from core.config import get_config
 
-    config_file = Path(config_path)
-    if not config_file.exists():
-        console.print(f"[red]Config not found: {config_path}[/red]")
-        raise typer.Exit(1)
+    config = get_config()
 
-    config = load_config(config_path)
-
-    table = Table(title=f"open_intern — {config.identity.name}")
+    table = Table(title="open_intern — Status")
     table.add_column("Setting", style="cyan")
     table.add_column("Value", style="white")
 
-    table.add_row("Name", config.identity.name)
-    table.add_row("Role", config.identity.role)
-    table.add_row("Platform", config.active_platform)
-    table.add_row("LLM", f"{config.llm.provider}:{config.llm.model}")
-    table.add_row("Daily Budget", f"${config.llm.daily_cost_budget_usd:.2f}")
-    table.add_row("Proactivity", "Enabled" if config.behavior.proactivity.enabled else "Disabled")
     db_url = config.database_url
     db_display = db_url.split("@")[-1] if "@" in db_url else db_url
     table.add_row("Database", db_display)
+    table.add_row("Port", str(config.port))
+    table.add_row("Encryption Key", "set" if config.encryption_key else "[red]NOT SET[/red]")
+    table.add_row("E2B API Key", "set" if config.e2b_api_key else "not set")
 
     console.print(table)
 
@@ -161,8 +118,6 @@ def logs(
         console.print("[yellow]No audit logs found yet.[/yellow]")
         raise typer.Exit()
 
-    import json
-
     all_lines = audit_file.read_text().strip().split("\n")
     recent = all_lines[-lines:]
 
@@ -191,16 +146,12 @@ def logs(
 
 
 @app.command()
-def chat(
-    config_path: str = typer.Option(
-        "config/agent.yaml", "--config", "-c", help="Path to config file"
-    ),
-):
-    """Interactive chat with the agent (no platform needed)."""
+def chat():
+    """Interactive chat with the default agent (no platform needed)."""
     from core.agent import OpenInternAgent
-    from core.config import load_config
+    from core.config import get_config
 
-    config = load_config(config_path)
+    config = get_config()
     console.print(
         Panel.fit(
             f"[bold]Chatting with {config.identity.name}[/bold]\nType 'quit' to exit",
@@ -209,8 +160,6 @@ def chat(
 
     agent = OpenInternAgent(config)
     agent.initialize()
-
-    import asyncio
 
     while True:
         try:

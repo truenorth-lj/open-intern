@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 
 from core.agent import OpenInternAgent
-from core.config import AppConfig
 from integrations.base import ChatEvent, Integration
 
 logger = logging.getLogger(__name__)
@@ -14,9 +13,9 @@ logger = logging.getLogger(__name__)
 class DiscordBot(Integration):
     """Discord bot integration using discord.py."""
 
-    def __init__(self, agent: OpenInternAgent, config: AppConfig):
+    def __init__(self, agent: OpenInternAgent, token: str):
         super().__init__(agent)
-        self.token = config.effective_discord_token
+        self.token = token
         self._bot = None
         self._bot_id: str = ""
 

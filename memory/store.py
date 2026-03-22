@@ -17,6 +17,7 @@ from sqlalchemy import (
     DateTime,
     Float,
     Index,
+    Integer,
     String,
     Text,
     create_engine,
@@ -49,6 +50,18 @@ class Base(DeclarativeBase):
     pass
 
 
+class SystemSettingRecord(Base):
+    """Admin-managed key-value store for system-wide defaults. Secrets encrypted with Fernet."""
+
+    __tablename__ = "system_settings"
+
+    key = Column(String, primary_key=True)
+    value = Column(Text, nullable=False, default="")
+    is_secret = Column(Boolean, nullable=False, default=False)
+    description = Column(Text, nullable=False, default="")
+    updated_at = Column(DateTime(timezone=True), nullable=False)
+
+
 class AgentRecord(Base):
     """Registered agent with its own identity, LLM config, and platform tokens."""
 
@@ -64,9 +77,29 @@ class AgentRecord(Base):
     llm_provider = Column(String, nullable=False, default="claude")
     llm_model = Column(String, nullable=False, default="claude-sonnet-4-6")
     llm_temperature = Column(Float, nullable=False, default=0.7)
+    llm_api_key_encrypted = Column(Text, nullable=False, default="")
+    max_tokens_per_action = Column(Integer, nullable=False, default=4096)
+    daily_cost_budget_usd = Column(Float, nullable=False, default=10.0)
 
-    # Platform tokens (encrypted at rest recommended)
-    telegram_token = Column(String, nullable=False, default="")
+    # Platform tokens (all Fernet-encrypted)
+    telegram_token_encrypted = Column(Text, nullable=False, default="")
+    discord_token_encrypted = Column(Text, nullable=False, default="")
+    lark_app_id_encrypted = Column(Text, nullable=False, default="")
+    lark_app_secret_encrypted = Column(Text, nullable=False, default="")
+    slack_bot_token_encrypted = Column(Text, nullable=False, default="")
+    slack_app_token_encrypted = Column(Text, nullable=False, default="")
+
+    # Platform selection
+    platform_type = Column(String, nullable=False, default="")
+
+    # Behavior + Safety as JSON
+    behavior_config = Column(Text, nullable=False, default="{}")
+    safety_config = Column(Text, nullable=False, default="{}")
+
+    # Memory config
+    embedding_model = Column(String, nullable=False, default="text-embedding-3-small")
+    max_retrieval_results = Column(Integer, nullable=False, default=10)
+    importance_decay_days = Column(Integer, nullable=False, default=90)
 
     # Sandbox config
     sandbox_enabled = Column(Boolean, nullable=False, default=True)

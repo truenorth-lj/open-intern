@@ -18,9 +18,9 @@ if config.config_file_name is not None:
 db_url = os.environ.get("DATABASE_URL")
 if not db_url:
     try:
-        from core.config import load_config
+        from core.config import get_config
 
-        app_config = load_config()
+        app_config = get_config()
         db_url = app_config.database_url
     except Exception as e:
         logger.warning("Could not load app config for DB URL: %s", e)

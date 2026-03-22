@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
-import yaml
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# --- Nested config models (used when building per-agent config from DB) ---
 
 
 class IdentityConfig(BaseModel):
@@ -16,36 +15,10 @@ class IdentityConfig(BaseModel):
     avatar_url: str = ""
 
 
-class LarkConfig(BaseModel):
-    app_id: str = ""
-    app_secret: str = ""
-
-
-class DiscordConfig(BaseModel):
-    bot_token: str = ""
-
-
-class SlackConfig(BaseModel):
-    bot_token: str = ""
-    app_token: str = ""
-
-
-class TelegramConfig(BaseModel):
-    bot_token: str = ""
-
-
-class PlatformConfig(BaseModel):
-    primary: str = "lark"
-    lark: LarkConfig = Field(default_factory=LarkConfig)
-    discord: DiscordConfig = Field(default_factory=DiscordConfig)
-    slack: SlackConfig = Field(default_factory=SlackConfig)
-    telegram: TelegramConfig = Field(default_factory=TelegramConfig)
-
-
 class LLMConfig(BaseModel):
     provider: str = "claude"  # claude | openai | minimax | ollama
     model: str = "claude-sonnet-4-6"
-    api_key: str = ""  # optional; falls back to env vars
+    api_key: str = ""
     temperature: float = 0.7
     max_tokens_per_action: int = 4096
     daily_cost_budget_usd: float = 10.0
@@ -95,6 +68,9 @@ class SafetyConfig(BaseModel):
     )
 
 
+# --- App-level config (infra-only, from .env / environment) ---
+
+
 class AppConfig(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -102,70 +78,21 @@ class AppConfig(BaseSettings):
         extra="ignore",
     )
 
-    # --- Environment variables (flat, auto-mapped from .env / os.environ) ---
+    # Infrastructure
     database_url: str = "postgresql://open_intern:open_intern@localhost:5556/open_intern"
-    platform: str = ""  # overrides platform.primary when set
     api_secret_key: str = ""
     port: int = 8000
+    encryption_key: str = ""
 
-    # API keys
-    anthropic_api_key: str = ""
-    openai_api_key: str = ""
-    minimax_api_key: str = ""
+    # Shared infra keys
     e2b_api_key: str = ""
 
-    # Platform tokens (env var overrides YAML)
-    telegram_bot_token: str = ""
-    discord_bot_token: str = ""
-
-    # --- Nested configs (from YAML) ---
+    # Per-agent config (built by AgentManager from DB, not from .env)
     identity: IdentityConfig = Field(default_factory=IdentityConfig)
-    platform_config: PlatformConfig = Field(default_factory=PlatformConfig)
     llm: LLMConfig = Field(default_factory=LLMConfig)
     memory: MemoryConfig = Field(default_factory=MemoryConfig)
     behavior: BehaviorConfig = Field(default_factory=BehaviorConfig)
     safety: SafetyConfig = Field(default_factory=SafetyConfig)
-
-    @property
-    def active_platform(self) -> str:
-        """Return the effective platform: env var > YAML config."""
-        return self.platform or self.platform_config.primary
-
-    @property
-    def effective_telegram_token(self) -> str:
-        """Return telegram token: env var > YAML config."""
-        return self.telegram_bot_token or self.platform_config.telegram.bot_token
-
-    @property
-    def effective_discord_token(self) -> str:
-        """Return discord token: env var > YAML config."""
-        return self.discord_bot_token or self.platform_config.discord.bot_token
-
-
-def load_config(path: str | Path | None = None) -> AppConfig:
-    """Load config from YAML, then let pydantic-settings overlay env vars.
-
-    Priority (highest wins): env vars / .env > YAML > field defaults.
-    """
-    search_paths = [
-        Path(path) if path else None,
-        Path("config/agent.yaml"),
-        Path("agent.yaml"),
-        Path.home() / ".open_intern" / "agent.yaml",
-    ]
-
-    yaml_data: dict = {}
-    for p in search_paths:
-        if p and p.exists():
-            yaml_data = yaml.safe_load(p.read_text()) or {}
-            break
-
-    # Remap YAML "platform" (nested object) to "platform_config"
-    if "platform" in yaml_data and isinstance(yaml_data["platform"], dict):
-        yaml_data["platform_config"] = yaml_data.pop("platform")
-
-    # BaseSettings: YAML values as init kwargs, env vars auto-override
-    return AppConfig(**yaml_data)
 
 
 _config: AppConfig | None = None
@@ -175,7 +102,7 @@ def get_config() -> AppConfig:
     """Get the global config singleton."""
     global _config
     if _config is None:
-        _config = load_config()
+        _config = AppConfig()
     return _config
 
 

@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from core.agent import OpenInternAgent
-from core.config import AppConfig, load_config
+from core.config import AppConfig, get_config
 from core.manager import AgentManager
 from core.scheduler import CronScheduler
 
@@ -23,8 +23,9 @@ _agent_manager: AgentManager | None = None
 _cron_scheduler: CronScheduler | None = None
 # Legacy single-agent reference (for backward compat with dashboard)
 _default_agent: OpenInternAgent | None = None
-# Telegram bots keyed by agent_id
+# Platform bots keyed by agent_id
 _telegram_bots: dict = {}
+_discord_bots: dict = {}
 
 
 def get_agent_manager() -> AgentManager:
@@ -45,8 +46,12 @@ def get_bot(platform: str, agent_id: str) -> Any | None:
         bot = _telegram_bots.get(agent_id)
         if bot:
             return bot
-        # Fallback: try "default" bot
         return _telegram_bots.get("default")
+    if platform == "discord":
+        bot = _discord_bots.get(agent_id)
+        if bot:
+            return bot
+        return _discord_bots.get("default")
     logger.warning(f"Unsupported delivery platform: {platform}")
     return None
 
@@ -68,7 +73,7 @@ def get_agent(agent_id: str | None = None) -> OpenInternAgent:
     raise RuntimeError("No agents available")
 
 
-def create_app(config: AppConfig, config_path: str) -> FastAPI:
+def create_app(config: AppConfig) -> FastAPI:
     """Create the FastAPI app with dashboard API, agent CRUD, and webhook endpoints."""
     app = FastAPI(title="open_intern — multi-agent")
 
@@ -94,10 +99,8 @@ def create_app(config: AppConfig, config_path: str) -> FastAPI:
     async def check_api_key(request: Request, call_next):
         if not api_secret or request.url.path in ("/health", "/docs", "/openapi.json"):
             return await call_next(request)
-        # Allow webhook endpoints without API key (Telegram sends updates directly)
         if request.url.path.startswith("/webhook/"):
             return await call_next(request)
-        # Allow auth endpoints without API key (they handle their own auth)
         if request.url.path.startswith("/api/dashboard/auth/"):
             return await call_next(request)
         key = request.headers.get("X-API-Key", "")
@@ -116,7 +119,7 @@ def create_app(config: AppConfig, config_path: str) -> FastAPI:
     from api.dashboard import init_dashboard
     from api.dashboard import router as dashboard_router
 
-    init_dashboard(config, config_path)
+    init_dashboard(config)
     app.include_router(dashboard_router)
 
     # --- Telegram webhook endpoints ---
@@ -132,7 +135,6 @@ def create_app(config: AppConfig, config_path: str) -> FastAPI:
             )
         update_data = await request.json()
 
-        # Process in background so we return 200 quickly to Telegram
         import asyncio
 
         async def _safe_process():
@@ -149,12 +151,12 @@ def create_app(config: AppConfig, config_path: str) -> FastAPI:
     async def health():
         mgr = _agent_manager
         agent_count = len(mgr.agents) if mgr else 0
-        bot_count = len(_telegram_bots)
         scheduled_jobs = len(_cron_scheduler.list_jobs()) if _cron_scheduler else 0
         return {
             "status": "ok",
             "agents": agent_count,
-            "telegram_bots": bot_count,
+            "telegram_bots": len(_telegram_bots),
+            "discord_bots": len(_discord_bots),
             "scheduled_jobs": scheduled_jobs,
         }
 
@@ -167,9 +169,9 @@ def _get_port(config: AppConfig) -> int:
 
 async def _setup_telegram_webhooks(config: AppConfig, manager: AgentManager) -> None:
     """Start Telegram bots and register webhooks for all agents with tokens."""
+    from core.crypto import decrypt
     from integrations.telegram.bot import TelegramBot
 
-    # Determine the public base URL for webhooks
     webhook_base = os.environ.get("WEBHOOK_BASE_URL", "").rstrip("/")
     if not webhook_base:
         port = _get_port(config)
@@ -186,7 +188,8 @@ async def _setup_telegram_webhooks(config: AppConfig, manager: AgentManager) -> 
             logger.warning(f"Agent {agent_id} has Telegram token but is not initialized")
             continue
         try:
-            bot = TelegramBot(agent, token=record.telegram_token, agent_id=agent_id)
+            token = decrypt(record.telegram_token_encrypted)
+            bot = TelegramBot(agent, token=token, agent_id=agent_id)
             await bot.start()
             webhook_url = f"{webhook_base}/webhook/{agent_id}"
             await bot.setup_webhook(webhook_url)
@@ -195,32 +198,62 @@ async def _setup_telegram_webhooks(config: AppConfig, manager: AgentManager) -> 
             logger.error(f"Failed to setup Telegram bot for agent {agent_id}: {e}")
 
 
-async def run_lark(app: FastAPI, config: AppConfig, agent: OpenInternAgent) -> None:
-    """Run the Lark bot with a webhook server."""
+async def _setup_discord_bots(manager: AgentManager) -> None:
+    """Start Discord bots for all agents with Discord tokens."""
+    import asyncio
+
+    from core.crypto import decrypt
+    from integrations.discord.bot import DiscordBot
+
+    dc_agents = manager.get_discord_agents()
+    for agent_id, record in dc_agents.items():
+        agent = manager.get(agent_id)
+        if not agent:
+            logger.warning(f"Agent {agent_id} has Discord token but is not initialized")
+            continue
+        try:
+            token = decrypt(record.discord_token_encrypted)
+            bot = DiscordBot(agent, token=token)
+            _discord_bots[agent_id] = bot
+            asyncio.create_task(bot.start())
+            logger.info(f"Started Discord bot for agent {agent_id}")
+        except Exception as e:
+            logger.error(f"Failed to setup Discord bot for agent {agent_id}: {e}")
+
+
+async def run_lark(app: FastAPI, config: AppConfig, manager: AgentManager) -> None:
+    """Run Lark bots with webhook server for all agents with Lark credentials."""
     import uvicorn
 
+    from core.crypto import decrypt
     from integrations.lark.bot import LarkBot, create_lark_webhook_handler
 
-    bot = LarkBot(agent, config)
-    await bot.start()
-    handler = create_lark_webhook_handler(bot)
+    lark_agents = manager.get_lark_agents()
+    for agent_id, record in lark_agents.items():
+        agent = manager.get(agent_id)
+        if not agent:
+            continue
+        try:
+            app_id = decrypt(record.lark_app_id_encrypted)
+            app_secret = decrypt(record.lark_app_secret_encrypted)
+            bot = LarkBot(agent, app_id=app_id, app_secret=app_secret)
+            await bot.start()
+            handler = create_lark_webhook_handler(bot)
 
-    @app.post("/lark/webhook")
-    async def lark_webhook(request: Request):
-        body = await request.json()
-        return await handler(body)
+            webhook_path = f"/lark/webhook/{agent_id}"
+
+            @app.post(webhook_path)
+            async def lark_webhook(request: Request, _handler=handler):
+                body = await request.json()
+                return await _handler(body)
+
+            logger.info(f"Lark webhook registered at {webhook_path} for agent {agent_id}")
+        except Exception as e:
+            logger.error(f"Failed to setup Lark bot for agent {agent_id}: {e}")
 
     server_config = uvicorn.Config(app, host="0.0.0.0", port=_get_port(config), log_level="info")
     server = uvicorn.Server(server_config)
     await server.serve()
-
-
-async def run_discord(config: AppConfig, agent: OpenInternAgent) -> None:
-    """Run the Discord bot."""
-    from integrations.discord.bot import DiscordBot
-
-    bot = DiscordBot(agent, config)
-    await bot.start()
 
 
 async def run_web_only(app: FastAPI, config: AppConfig) -> None:
@@ -232,11 +265,11 @@ async def run_web_only(app: FastAPI, config: AppConfig) -> None:
     await server.serve()
 
 
-async def run_agent(config_path: str | None = None) -> None:
+async def run_agent(platform: str = "web") -> None:
     """Main entry point — initialize agent manager and run on configured platform."""
     global _agent_manager, _default_agent, _cron_scheduler
 
-    config = load_config(config_path)
+    config = get_config()
 
     # Setup logging
     logging.basicConfig(
@@ -245,7 +278,6 @@ async def run_agent(config_path: str | None = None) -> None:
         datefmt="%Y-%m-%d %H:%M:%S",
     )
 
-    platform = config.active_platform
     logger.info(f"Starting open_intern (platform: {platform})")
 
     # Create scheduler (lightweight — no jobs loaded yet)
@@ -257,9 +289,9 @@ async def run_agent(config_path: str | None = None) -> None:
     manager.initialize()
     _agent_manager = manager
 
-    # If no agents in DB, create a default agent from config (backward compat)
+    # If no agents in DB, create a default agent
     if not manager.agents:
-        logger.info("No agents in DB — creating default agent from config")
+        logger.info("No agents in DB — creating default agent")
         from core.scheduler import create_scheduler_tools
 
         extra_tools = create_scheduler_tools(scheduler, "default")
@@ -273,35 +305,17 @@ async def run_agent(config_path: str | None = None) -> None:
     _cron_scheduler = scheduler
 
     # Create the FastAPI app
-    app = create_app(config, config_path or "config/agent.yaml")
+    app = create_app(config)
 
     # Run on the configured platform
     if platform == "telegram":
-        # Setup Telegram webhooks for all agents with tokens
         await _setup_telegram_webhooks(config, manager)
-        # Also support the legacy single-bot mode via env var
-        if not _telegram_bots and config.effective_telegram_token:
-            from integrations.telegram.bot import TelegramBot
-
-            default_agent = get_agent()
-            webhook_base = os.environ.get("WEBHOOK_BASE_URL", "").rstrip("/")
-            bot = TelegramBot(
-                default_agent,
-                token=config.effective_telegram_token,
-                agent_id="default",
-            )
-            await bot.start()
-            if webhook_base:
-                await bot.setup_webhook(f"{webhook_base}/webhook/default")
-            _telegram_bots["default"] = bot
-        # Start the web server
         await run_web_only(app, config)
     elif platform == "lark":
-        default_agent = get_agent()
-        await run_lark(app, config, default_agent)
+        await run_lark(app, config, manager)
     elif platform == "discord":
-        default_agent = get_agent()
-        await run_discord(config, default_agent)
+        await _setup_discord_bots(manager)
+        await run_web_only(app, config)
     elif platform == "web":
         logger.info(f"Running in web-only mode (dashboard API on port {config.port})")
         await run_web_only(app, config)

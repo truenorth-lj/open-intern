@@ -5,14 +5,12 @@ from __future__ import annotations
 import logging
 import re
 from datetime import datetime, timezone
-from pathlib import Path
 
-import yaml
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, field_validator
 
 from api.auth import get_current_user, get_user_accessible_agents, require_admin
-from core.config import AppConfig, IdentityConfig, LLMConfig
+from core.config import AppConfig
 from memory.store import MemoryRecord, MemoryScope, MemoryStore, ThreadMetaRecord, TokenUsageRecord
 from scripts.seed_skills import list_skills as _list_skills
 
@@ -21,16 +19,14 @@ router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
 # Set by server.py at startup
 _config: AppConfig | None = None
-_config_path: str = "config/agent.yaml"
 
 # Thread metadata cache: thread_id -> {title, created_at}
 _thread_meta: dict[str, dict] = {}
 
 
-def init_dashboard(config: AppConfig, config_path: str):
-    global _config, _config_path
+def init_dashboard(config: AppConfig):
+    global _config
     _config = config
-    _config_path = config_path
     _load_thread_meta()
 
 
@@ -63,7 +59,21 @@ class AgentCreate(BaseModel):
     llm_provider: str = "claude"
     llm_model: str = "claude-sonnet-4-6"
     llm_temperature: float = 0.7
+    llm_api_key: str = ""
+    max_tokens_per_action: int = 4096
+    daily_cost_budget_usd: float = 10.0
     telegram_token: str = ""
+    discord_token: str = ""
+    lark_app_id: str = ""
+    lark_app_secret: str = ""
+    slack_bot_token: str = ""
+    slack_app_token: str = ""
+    platform_type: str = ""
+    behavior_config: str = "{}"
+    safety_config: str = "{}"
+    embedding_model: str = "text-embedding-3-small"
+    max_retrieval_results: int = 10
+    importance_decay_days: int = 90
     sandbox_enabled: bool = True
 
 
@@ -75,7 +85,21 @@ class AgentUpdate(BaseModel):
     llm_provider: str | None = None
     llm_model: str | None = None
     llm_temperature: float | None = None
+    llm_api_key: str | None = None
+    max_tokens_per_action: int | None = None
+    daily_cost_budget_usd: float | None = None
     telegram_token: str | None = None
+    discord_token: str | None = None
+    lark_app_id: str | None = None
+    lark_app_secret: str | None = None
+    slack_bot_token: str | None = None
+    slack_app_token: str | None = None
+    platform_type: str | None = None
+    behavior_config: str | None = None
+    safety_config: str | None = None
+    embedding_model: str | None = None
+    max_retrieval_results: int | None = None
+    importance_decay_days: int | None = None
     sandbox_enabled: bool | None = None
     is_active: bool | None = None
 
@@ -149,74 +173,45 @@ def get_status(user: dict = Depends(get_current_user)):
     if accessible is not None:
         agent_ids = [a for a in agent_ids if a in accessible]
     return {
-        "platform": _config.active_platform,
         "agents": len(agent_ids),
         "agent_ids": agent_ids,
     }
 
 
-# --- Config ---
+# --- System Settings ---
 
 
-@router.get("/config")
-def get_config(user: dict = Depends(get_current_user)):
-    if _config is None:
-        raise HTTPException(status_code=503, detail="Not initialized")
-    data = _config.model_dump()
-    # Redact secrets
-    data["llm"]["api_key"] = "***" if data["llm"]["api_key"] else ""
-    for key in ("anthropic_api_key", "openai_api_key", "minimax_api_key"):
-        if data.get(key):
-            data[key] = "***"
-    if data.get("api_secret_key"):
-        data["api_secret_key"] = "***"
-    if data.get("telegram_bot_token"):
-        data["telegram_bot_token"] = "***"
-    if data.get("discord_bot_token"):
-        data["discord_bot_token"] = "***"
-    pc = data.get("platform_config", {})
-    for platform_name in ("lark", "discord", "slack", "telegram"):
-        platform_data = pc.get(platform_name, {})
-        for secret_field in ("app_secret", "bot_token", "app_token"):
-            if platform_data.get(secret_field):
-                platform_data[secret_field] = "***"
-    return data
+class SettingUpsert(BaseModel):
+    value: str
+    is_secret: bool = False
+    description: str = ""
 
 
-class IdentityUpdate(BaseModel):
-    name: str
-    role: str
-    personality: str
-    avatar_url: str = ""
+@router.get("/settings")
+def list_settings(user: dict = Depends(get_current_user)):
+    mgr = _get_manager()
+    return {"settings": mgr.get_system_settings()}
 
 
-@router.put("/config/identity")
-def update_identity(body: IdentityUpdate, admin: dict = Depends(require_admin)):
-    global _config
-    if _config is None:
-        raise HTTPException(status_code=503, detail="Not initialized")
-    _config.identity = IdentityConfig(**body.model_dump())
-    _save_config()
-    return {"ok": True, "message": "Identity updated. Restart agent to apply."}
+@router.put("/settings/{key}")
+def upsert_setting(key: str, body: SettingUpsert, admin: dict = Depends(require_admin)):
+    mgr = _get_manager()
+    result = mgr.upsert_system_setting(
+        key=key,
+        value=body.value,
+        is_secret=body.is_secret,
+        description=body.description,
+    )
+    return result
 
 
-class LLMUpdate(BaseModel):
-    provider: str
-    model: str
-    temperature: float = 0.7
-    max_tokens_per_action: int = 4096
-    daily_cost_budget_usd: float = 10.0
-
-
-@router.put("/config/llm")
-def update_llm(body: LLMUpdate, admin: dict = Depends(require_admin)):
-    global _config
-    if _config is None:
-        raise HTTPException(status_code=503, detail="Not initialized")
-    existing_key = _config.llm.api_key
-    _config.llm = LLMConfig(**body.model_dump(), api_key=existing_key)
-    _save_config()
-    return {"ok": True, "message": "LLM config updated. Restart agent to apply."}
+@router.delete("/settings/{key}")
+def delete_setting(key: str, admin: dict = Depends(require_admin)):
+    mgr = _get_manager()
+    deleted = mgr.delete_system_setting(key)
+    if not deleted:
+        raise HTTPException(status_code=404, detail=f"Setting '{key}' not found")
+    return {"ok": True}
 
 
 # --- Chat (per-agent) ---
@@ -848,18 +843,3 @@ async def trigger_scheduled_job(job_id: str):
     if not triggered:
         raise HTTPException(status_code=404, detail="Job not found")
     return {"ok": True, "status": "triggered"}
-
-
-# --- Helpers ---
-
-
-def _save_config():
-    if _config is None:
-        return
-    path = Path(_config_path)
-    tmp_path = path.with_suffix(".yaml.tmp")
-    data = _config.model_dump()
-    content = yaml.dump(data, default_flow_style=False, sort_keys=False, allow_unicode=True)
-    tmp_path.write_text(content)
-    tmp_path.replace(path)
-    logger.info(f"Config saved to {path}")
