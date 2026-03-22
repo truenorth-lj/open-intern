@@ -20,6 +20,7 @@ export default function AgentThreadPage({
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [streaming, setStreaming] = useState(false);
+  const [toolStatus, setToolStatus] = useState("");
   const [reloading, setReloading] = useState(false);
   const [reloadStatus, setReloadStatus] = useState<"" | "ok" | "error">("");
   const [tokenUsage, setTokenUsage] = useState<{
@@ -80,6 +81,7 @@ export default function AgentThreadPage({
       await sendMessageStream(
         text,
         (token) => {
+          setToolStatus("");
           setMessages((prev) => {
             const updated = [...prev];
             const last = updated[updated.length - 1];
@@ -91,6 +93,7 @@ export default function AgentThreadPage({
         },
         () => {
           setStreaming(false);
+          setToolStatus("");
           // Save final messages to sessionStorage
           setMessages((prev) => {
             sessionStorage.setItem(`thread_${threadId}`, JSON.stringify(prev));
@@ -102,6 +105,7 @@ export default function AgentThreadPage({
         },
         (error) => {
           setStreaming(false);
+          setToolStatus("");
           setMessages((prev) => {
             const updated = [...prev];
             const last = updated[updated.length - 1];
@@ -114,6 +118,14 @@ export default function AgentThreadPage({
         },
         threadId,
         agentId,
+        undefined,
+        (data) => {
+          if (data.status === "running") {
+            setToolStatus(`Calling ${data.tool}...`);
+          } else {
+            setToolStatus("");
+          }
+        },
       );
     } catch (err) {
       setStreaming(false);
@@ -200,7 +212,7 @@ export default function AgentThreadPage({
                 }`}
               >
                 <p className="text-sm whitespace-pre-wrap">
-                  {msg.content || (streaming && i === messages.length - 1 ? "Thinking..." : "")}
+                  {msg.content || (streaming && i === messages.length - 1 ? (toolStatus || "Thinking...") : "")}
                 </p>
               </Card>
             </div>

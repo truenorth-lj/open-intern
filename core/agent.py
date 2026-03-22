@@ -418,6 +418,12 @@ class OpenInternAgent:
                         if token_text:
                             full_text += token_text
                             yield {"type": "token", "content": token_text}
+                elif kind == "on_tool_start":
+                    tool_name = event.get("name", "unknown")
+                    yield {"type": "status", "tool": tool_name, "status": "running"}
+                elif kind == "on_tool_end":
+                    tool_name = event.get("name", "unknown")
+                    yield {"type": "status", "tool": tool_name, "status": "done"}
 
         except Exception:
             # Fallback: use non-streaming chat()
