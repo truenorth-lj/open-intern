@@ -73,9 +73,13 @@ function getPresetRange(preset: RangePreset): { start: string; end: string } {
     default:
       start.setDate(end.getDate() - 30);
   }
+  // Add 1 day to end so the current day's data is included
+  // (backend filters by created_at <= end, and date-only parses as midnight)
+  const endInclusive = new Date(end);
+  endInclusive.setDate(endInclusive.getDate() + 1);
   return {
     start: start.toISOString().split("T")[0],
-    end: end.toISOString().split("T")[0],
+    end: endInclusive.toISOString().split("T")[0],
   };
 }
 
