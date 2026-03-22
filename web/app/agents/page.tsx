@@ -311,7 +311,7 @@ export default function AgentsPage() {
                 <Input
                   id="llm-api-key"
                   type="password"
-                  placeholder={editingAgent ? "(leave blank to keep current key)" : "sk-..."}
+                  placeholder={editingAgent ? "(leave blank to keep current key)" : "Enter API key..."}
                   value={agentForm.llm_api_key}
                   onChange={(e) =>
                     setAgentForm((f) => ({
