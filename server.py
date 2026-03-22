@@ -142,9 +142,11 @@ def create_app(config: AppConfig) -> FastAPI:
                 status_code=404,
                 content={"detail": f"No bot for agent '{agent_id}'"},
             )
-        # Verify the request is from Telegram
-        secret = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
-        if not bot.webhook_secret or secret != bot.webhook_secret:
+        # Verify the request is from Telegram (constant-time comparison)
+        import secrets
+
+        incoming = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
+        if not bot.webhook_secret or not secrets.compare_digest(incoming, bot.webhook_secret):
             return JSONResponse(status_code=403, content={"detail": "Forbidden"})
         update_data = await request.json()
 
