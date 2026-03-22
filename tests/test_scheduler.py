@@ -189,7 +189,8 @@ class TestCronSchedulerExecuteJob:
     async def test_execute_calls_agent_chat(self, scheduler):
         # Setup mock agent
         agent = AsyncMock()
-        agent.chat.return_value = ("Done!", {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0})
+        empty_usage = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
+        agent.chat.return_value = ("Done!", empty_usage)
         manager = MagicMock()
         manager.get.return_value = agent
         scheduler._agent_manager = manager
