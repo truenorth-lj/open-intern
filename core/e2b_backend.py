@@ -82,7 +82,7 @@ class E2BSandboxBackend(SandboxBackendProtocol):
                     f"Could not reconnect to sandbox {self._existing_sandbox_id}, creating new one"
                 )
 
-        self._sandbox = Sandbox(
+        self._sandbox = Sandbox.create(
             template=self._template,
             timeout=self._default_timeout,
             metadata={"agent_id": self._agent_id},
