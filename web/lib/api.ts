@@ -113,7 +113,7 @@ export async function sendMessageStream(
         if (event.type === "token") {
           onToken(event.content);
         } else if (event.type === "status") {
-          onStatus?.(event);
+          onStatus?.({ tool: event.tool, status: event.status });
         } else if (event.type === "done") {
           onDone(event);
         } else if (event.type === "error") {
