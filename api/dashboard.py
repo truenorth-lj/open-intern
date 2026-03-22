@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 
 from api.auth import get_current_user, get_user_accessible_agents, require_admin
@@ -466,6 +468,95 @@ async def chat(body: ChatRequest, user: dict = Depends(get_current_user)):
         title=title,
         agent_id=agent_id,
         token_usage=token_usage,
+    )
+
+
+@router.post("/chat/stream")
+async def chat_stream(body: ChatRequest, user: dict = Depends(get_current_user)):
+    """SSE streaming chat endpoint. Sends token-by-token events."""
+    agent_id = body.agent_id or "default"
+    accessible = get_user_accessible_agents(user)
+    if accessible is not None and agent_id not in accessible:
+        raise HTTPException(status_code=403, detail="Access denied to this agent")
+    try:
+        agent = _get_agent(agent_id)
+    except Exception:
+        raise HTTPException(status_code=404, detail=f"Agent '{agent_id}' not available")
+
+    if not agent.config.llm.api_key:
+        raise HTTPException(
+            status_code=422,
+            detail="NO_API_KEY: This agent has no LLM API key configured. "
+            "Set one in the agent's edit page, or configure a system default "
+            "in Settings.",
+        )
+
+    from uuid import uuid4
+
+    is_new = not body.thread_id
+    thread_id = body.thread_id or str(uuid4())
+    user_name = user.get("email", "user").split("@")[0]
+
+    async def event_generator():
+        token_usage = {}
+        try:
+            async for chunk in agent.chat_stream(
+                body.message,
+                context={
+                    "platform": "web",
+                    "channel_id": "web-dashboard",
+                    "user_name": user_name,
+                    "user_id": user.get("user_id", ""),
+                    "is_dm": True,
+                },
+                thread_id=thread_id,
+            ):
+                if chunk["type"] == "token":
+                    yield f"data: {json.dumps(chunk)}\n\n"
+                elif chunk["type"] == "done":
+                    token_usage = chunk.get("token_usage", {})
+        except Exception as e:
+            logger.error("Streaming chat failed for agent %s: %s", agent_id, e)
+            err_data = {"type": "error", "content": "An error occurred."}
+            yield f"data: {json.dumps(err_data)}\n\n"
+            return
+
+        user_id = user.get("user_id", "")
+
+        # Store token usage
+        if token_usage.get("total_tokens", 0) > 0:
+            _store_token_usage(agent_id, thread_id, user_id, token_usage)
+
+        title = ""
+        if is_new:
+            title = _generate_thread_title(agent, body.message)
+            _save_thread_meta(
+                thread_id,
+                title,
+                datetime.now(timezone.utc).isoformat(),
+                agent_id,
+                user_id,
+            )
+        else:
+            title = _thread_meta.get(thread_id, {}).get("title", "")
+
+        # Send final done event with metadata
+        done_data = {
+            "type": "done",
+            "thread_id": thread_id,
+            "title": title,
+            "agent_id": agent_id,
+            "token_usage": token_usage,
+        }
+        yield f"data: {json.dumps(done_data)}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
     )
 
 

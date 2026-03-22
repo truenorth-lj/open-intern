@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
+import time
 from uuid import uuid4
 
 from core.agent import OpenInternAgent
@@ -133,23 +133,69 @@ class TelegramBot(Integration):
             raw=update,
         )
 
-        # Show typing indicator while processing
-        typing_active = True
+        # Stream response with progressive message editing
+        await self._handle_event_stream(event, message)
 
-        async def keep_typing():
-            while typing_active:
+    async def _handle_event_stream(self, event: ChatEvent, tg_message) -> None:
+        """Stream agent response, progressively editing a Telegram message."""
+        if self._is_self(event):
+            return
+
+        thread_id = event.thread_id or event.channel_id
+        chat_id = int(event.channel_id)
+
+        # Send initial "Thinking..." message
+        sent = await self._app.bot.send_message(chat_id=chat_id, text="Thinking...")
+        accumulated = ""
+        last_edit = 0.0
+        edit_interval = 1.5  # seconds between edits to avoid rate limits
+
+        try:
+            async for chunk in self.agent.chat_stream(
+                event.content, context=event.to_context(), thread_id=thread_id
+            ):
+                if chunk["type"] == "token":
+                    accumulated += chunk["content"]
+                    now = time.monotonic()
+                    # Rate-limit edits to avoid Telegram API throttling
+                    if now - last_edit >= edit_interval and accumulated:
+                        try:
+                            display = accumulated[:4096]
+                            await self._app.bot.edit_message_text(
+                                chat_id=chat_id,
+                                message_id=sent.message_id,
+                                text=display,
+                            )
+                            last_edit = now
+                        except Exception:
+                            pass  # edit may fail if text unchanged
+
+                elif chunk["type"] == "done":
+                    accumulated = chunk.get("content", accumulated)
+
+        except Exception:
+            logger.exception("Streaming failed for Telegram event")
+            if not accumulated:
+                accumulated = "Sorry, an error occurred while processing your message."
+
+        # Final edit with complete response
+        if accumulated:
+            if len(accumulated) <= 4096:
                 try:
-                    await message.chat.send_action("typing")
+                    await self._app.bot.edit_message_text(
+                        chat_id=chat_id,
+                        message_id=sent.message_id,
+                        text=accumulated,
+                    )
                 except Exception:
                     pass
-                await asyncio.sleep(4)
-
-        typing_task = asyncio.create_task(keep_typing())
-        try:
-            await self.handle_event(event)
-        finally:
-            typing_active = False
-            typing_task.cancel()
+            else:
+                # Delete the partial message, send full response in chunks
+                try:
+                    await self._app.bot.delete_message(chat_id=chat_id, message_id=sent.message_id)
+                except Exception:
+                    pass
+                await self.send_message(event.channel_id, accumulated)
 
     async def stop(self) -> None:
         """Stop the Telegram bot and remove webhook."""

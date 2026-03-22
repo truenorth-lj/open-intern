@@ -68,6 +68,59 @@ export async function sendMessage(message: string, threadId?: string, agentId?: 
   return res.json();
 }
 
+export async function sendMessageStream(
+  message: string,
+  onToken: (token: string) => void,
+  onDone: (data: { thread_id: string; title: string; agent_id: string; token_usage: Record<string, number> }) => void,
+  onError?: (error: string) => void,
+  threadId?: string,
+  agentId?: string,
+): Promise<void> {
+  const res = await apiFetch("/chat/stream", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message, thread_id: threadId || "", agent_id: agentId || "" }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to send message");
+  }
+
+  const reader = res.body?.getReader();
+  if (!reader) throw new Error("No response body");
+
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() || "";
+
+    for (const line of lines) {
+      if (!line.startsWith("data: ")) continue;
+      const jsonStr = line.slice(6).trim();
+      if (!jsonStr) continue;
+
+      try {
+        const event = JSON.parse(jsonStr);
+        if (event.type === "token") {
+          onToken(event.content);
+        } else if (event.type === "done") {
+          onDone(event);
+        } else if (event.type === "error") {
+          onError?.(event.content);
+        }
+      } catch {
+        // skip malformed JSON
+      }
+    }
+  }
+}
+
 export async function getThreads(agentId?: string): Promise<{ threads: { thread_id: string; title: string; created_at: string }[] }> {
   const params = agentId ? `?agent_id=${agentId}` : "";
   const res = await apiFetch(`/threads${params}`);

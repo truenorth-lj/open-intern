@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { sendMessage, getThreadTokenUsage, listAgents, reloadAgent } from "@/lib/api";
+import { sendMessageStream, getThreadTokenUsage, listAgents, reloadAgent } from "@/lib/api";
 import { formatTokenCount } from "@/lib/utils";
 import type { ChatMessage } from "@/lib/types";
 
@@ -19,6 +19,7 @@ export default function AgentThreadPage({
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [streaming, setStreaming] = useState(false);
   const [reloading, setReloading] = useState(false);
   const [reloadStatus, setReloadStatus] = useState<"" | "ok" | "error">("");
   const [tokenUsage, setTokenUsage] = useState<{
@@ -71,28 +72,64 @@ export default function AgentThreadPage({
     });
     setLoading(true);
 
+    // Add empty assistant message for streaming
+    setMessages((prev) => [...prev, { role: "assistant" as const, content: "" }]);
+    setStreaming(true);
+
     try {
-      const data = await sendMessage(text, threadId, agentId);
-      setMessages((prev) => {
-        const updated = [
-          ...prev,
-          { role: "assistant" as const, content: data.response },
-        ];
-        sessionStorage.setItem(`thread_${threadId}`, JSON.stringify(updated));
-        return updated;
-      });
-      getThreadTokenUsage(threadId)
-        .then(setTokenUsage)
-        .catch(() => {});
+      await sendMessageStream(
+        text,
+        (token) => {
+          setMessages((prev) => {
+            const updated = [...prev];
+            const last = updated[updated.length - 1];
+            if (last && last.role === "assistant") {
+              updated[updated.length - 1] = { ...last, content: last.content + token };
+            }
+            return updated;
+          });
+        },
+        () => {
+          setStreaming(false);
+          // Save final messages to sessionStorage
+          setMessages((prev) => {
+            sessionStorage.setItem(`thread_${threadId}`, JSON.stringify(prev));
+            return prev;
+          });
+          getThreadTokenUsage(threadId)
+            .then(setTokenUsage)
+            .catch(() => {});
+        },
+        (error) => {
+          setStreaming(false);
+          setMessages((prev) => {
+            const updated = [...prev];
+            const last = updated[updated.length - 1];
+            if (last && last.role === "assistant") {
+              updated[updated.length - 1] = { ...last, content: error };
+            }
+            return updated;
+          });
+        },
+        threadId,
+        agentId,
+      );
     } catch (err) {
+      setStreaming(false);
       const msg =
         err instanceof Error && err.message.includes("NO_API_KEY")
           ? "This agent has no API key configured. Please set one in the agent's Edit page, or configure a system default in Settings."
           : "Error: Could not reach the agent.";
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", content: msg },
-      ]);
+      setMessages((prev) => {
+        const updated = [...prev];
+        const last = updated[updated.length - 1];
+        if (last && last.role === "assistant") {
+          updated[updated.length - 1] = { ...last, content: msg };
+        } else {
+          updated.push({ role: "assistant", content: msg });
+        }
+        return updated;
+      });
     } finally {
       setLoading(false);
     }
@@ -161,17 +198,12 @@ export default function AgentThreadPage({
                     : "bg-muted"
                 }`}
               >
-                <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                <p className="text-sm whitespace-pre-wrap">
+                  {msg.content || (streaming && i === messages.length - 1 ? "Thinking..." : "")}
+                </p>
               </Card>
             </div>
           ))}
-          {loading && (
-            <div className="flex justify-start">
-              <Card className="bg-muted px-4 py-3">
-                <p className="text-sm text-muted-foreground">Thinking...</p>
-              </Card>
-            </div>
-          )}
           <div ref={scrollRef} />
         </div>
       </ScrollArea>

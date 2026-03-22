@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
 
@@ -347,6 +348,104 @@ class OpenInternAgent:
         self._store_conversation(message, response, context)
 
         return response, token_usage
+
+    async def chat_stream(
+        self, message: str, context: ChatContext | None = None, thread_id: str | None = None
+    ) -> AsyncIterator[dict[str, Any]]:
+        """Stream a response token-by-token via astream_events.
+
+        Yields dicts with:
+          {"type": "token", "content": "..."}   — incremental text chunk
+          {"type": "done", "content": "...", "token_usage": {...}}  — final result
+
+        Falls back to non-streaming chat() if astream_events is unavailable.
+        """
+        if self._agent is None:
+            raise AgentNotInitializedError(self.agent_id)
+
+        context = context or {}
+
+        # Safety check (same as chat())
+        action_type = "respond_to_dm" if context.get("is_dm") else "respond_to_mention"
+        verdict = self.safety.check(
+            action_type,
+            description=f"Responding to message in {context.get('channel_id', 'unknown')}",
+            user_id=context.get("user_id", ""),
+        )
+        if verdict == ActionVerdict.DENY:
+            yield {
+                "type": "done",
+                "content": "I'm not allowed to respond in this context.",
+                "token_usage": {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0},
+            }
+            return
+
+        # Build context-aware message
+        enriched_message = message
+        if context.get("channel_id") and context.get("platform") != "web":
+            enriched_message = (
+                f"[Context: channel={context.get('channel_id', '')}, "
+                f"user={context.get('user_name', 'unknown')}, "
+                f"platform={context.get('platform', 'unknown')}]\n\n"
+                f"{message}"
+            )
+
+        invoke_config = {}
+        if thread_id:
+            invoke_config = {"configurable": {"thread_id": thread_id}}
+
+        input_data = {"messages": [{"role": "user", "content": enriched_message}]}
+        full_text = ""
+
+        try:
+            async for event in self._agent.astream_events(input_data, invoke_config, version="v2"):
+                kind = event.get("event", "")
+                # on_chat_model_stream emits individual tokens from the LLM
+                if kind == "on_chat_model_stream":
+                    chunk = event.get("data", {}).get("chunk")
+                    if chunk is not None:
+                        token_text = ""
+                        if hasattr(chunk, "content"):
+                            content = chunk.content
+                            if isinstance(content, str):
+                                token_text = content
+                            elif isinstance(content, list):
+                                for block in content:
+                                    if isinstance(block, dict) and block.get("type") == "text":
+                                        token_text += block.get("text", "")
+                                    elif isinstance(block, str):
+                                        token_text += block
+                        if token_text:
+                            full_text += token_text
+                            yield {"type": "token", "content": token_text}
+
+        except Exception:
+            # Fallback: use non-streaming chat()
+            logger.warning("astream_events failed, falling back to non-streaming chat()")
+            response, token_usage = await self.chat(message, context, thread_id)
+            yield {"type": "done", "content": response, "token_usage": dict(token_usage)}
+            return
+
+        # Get final state for token usage
+        import asyncio
+
+        final_state = await asyncio.to_thread(self._agent.get_state, invoke_config)
+        # Extract token usage from the final messages
+        result = {"messages": final_state.values.get("messages", [])} if final_state else {}
+        token_usage = self._extract_token_usage(result)
+
+        # If no tokens were streamed, extract from final state
+        if not full_text:
+            full_text = self._extract_response(result)
+
+        # Store conversation to memory
+        self._store_conversation(message, full_text, context)
+
+        yield {
+            "type": "done",
+            "content": full_text,
+            "token_usage": dict(token_usage),
+        }
 
     def _extract_response(self, result: Any) -> str:
         """Extract the final text response from agent result."""
