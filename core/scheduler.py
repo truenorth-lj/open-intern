@@ -96,6 +96,8 @@ class CronScheduler:
             channel_id = record.channel_id
             job_name = record.name
             isolated = record.isolated
+            delivery_platform = record.delivery_platform
+            delivery_chat_id = record.delivery_chat_id
 
         logger.info(f"Executing scheduled job: {job_name} (agent: {agent_id})")
 
@@ -105,14 +107,20 @@ class CronScheduler:
                 raise RuntimeError(f"Agent '{agent_id}' not available")
 
             context: dict[str, Any] = {
-                "platform": "scheduler",
-                "channel_id": channel_id or "scheduled-task",
+                "platform": delivery_platform or "scheduler",
+                "channel_id": channel_id or delivery_chat_id or "scheduled-task",
                 "user_name": "scheduler",
                 "is_dm": False,
             }
             # isolated: fresh thread each run; persistent: reuse same thread
             thread_id = f"cron:{job_id}:{uuid4()}" if isolated else f"cron:{job_id}"
             response = await agent.chat(prompt, context=context, thread_id=thread_id)
+
+            # Deliver response to platform if configured
+            if delivery_platform and delivery_chat_id:
+                await self._deliver_response(
+                    delivery_platform, delivery_chat_id, agent_id, response
+                )
 
             # Update last run status
             self._update_job_status(job_id, "success")
@@ -124,6 +132,22 @@ class CronScheduler:
         except Exception as e:
             self._update_job_status(job_id, "error", str(e))
             logger.error(f"Job {job_name} failed: {e}")
+
+    async def _deliver_response(
+        self, platform: str, chat_id: str, agent_id: str, response: str
+    ) -> None:
+        """Deliver a cron job response to a platform channel."""
+        from server import get_bot
+
+        bot = get_bot(platform, agent_id)
+        if not bot:
+            logger.warning(f"No {platform} bot available for agent {agent_id}, skipping delivery")
+            return
+        try:
+            await bot.send_message(channel_id=chat_id, content=response)
+            logger.info(f"Delivered to {platform}:{chat_id}")
+        except Exception as e:
+            logger.error(f"Failed to deliver to {platform}:{chat_id}: {e}")
 
     def _update_job_status(self, job_id: str, status: str, error: str | None = None) -> None:
         """Update job's last_run_at, last_run_status, and next_run_at."""
@@ -167,6 +191,8 @@ class CronScheduler:
         prompt: str,
         tz: str = "UTC",
         channel_id: str = "",
+        delivery_platform: str = "",
+        delivery_chat_id: str = "",
         isolated: bool = False,
         metadata: dict[str, Any] | None = None,
     ) -> dict:
@@ -183,6 +209,8 @@ class CronScheduler:
             timezone=tz,
             prompt=prompt,
             channel_id=channel_id,
+            delivery_platform=delivery_platform,
+            delivery_chat_id=delivery_chat_id,
             isolated=isolated,
             enabled=True,
             created_at=now,
@@ -211,10 +239,12 @@ class CronScheduler:
                 sqlalchemy.text(
                     "INSERT INTO scheduled_jobs "
                     "(id, agent_id, name, schedule_type, schedule_expr, timezone, "
-                    "prompt, channel_id, isolated, enabled, created_at, updated_at, "
+                    "prompt, channel_id, delivery_platform, delivery_chat_id, "
+                    "isolated, enabled, created_at, updated_at, "
                     "metadata_json, next_run_at) "
                     "VALUES (:id, :agent_id, :name, :schedule_type, :schedule_expr, "
-                    ":timezone, :prompt, :channel_id, :isolated, :enabled, :created_at, "
+                    ":timezone, :prompt, :channel_id, :delivery_platform, "
+                    ":delivery_chat_id, :isolated, :enabled, :created_at, "
                     ":updated_at, :metadata_json, :next_run_at)"
                 ),
                 {
@@ -226,6 +256,8 @@ class CronScheduler:
                     "timezone": tz,
                     "prompt": prompt,
                     "channel_id": channel_id,
+                    "delivery_platform": delivery_platform,
+                    "delivery_chat_id": delivery_chat_id,
                     "isolated": isolated,
                     "enabled": True,
                     "created_at": now,
@@ -246,6 +278,8 @@ class CronScheduler:
             "timezone": tz,
             "prompt": prompt,
             "channel_id": channel_id,
+            "delivery_platform": delivery_platform,
+            "delivery_chat_id": delivery_chat_id,
             "isolated": isolated,
             "enabled": True,
             "last_run_at": None,
@@ -290,6 +324,8 @@ class CronScheduler:
             "timezone",
             "prompt",
             "channel_id",
+            "delivery_platform",
+            "delivery_chat_id",
             "isolated",
             "enabled",
         }
@@ -378,6 +414,8 @@ class CronScheduler:
             "timezone": record.timezone,
             "prompt": record.prompt,
             "channel_id": record.channel_id,
+            "delivery_platform": record.delivery_platform,
+            "delivery_chat_id": record.delivery_chat_id,
             "isolated": record.isolated,
             "enabled": record.enabled,
             "last_run_at": record.last_run_at.isoformat() if record.last_run_at else None,
@@ -408,6 +446,8 @@ def create_scheduler_tools(scheduler: CronScheduler, agent_id: str) -> list:
         prompt: str,
         timezone: str = "UTC",
         channel_id: str = "",
+        delivery_platform: str = "",
+        delivery_chat_id: str = "",
         isolated: bool = False,
     ) -> str:
         """Create a new scheduled job that will run automatically.
@@ -421,7 +461,12 @@ def create_scheduler_tools(scheduler: CronScheduler, agent_id: str) -> list:
             schedule_expr: The schedule expression matching the type above.
             prompt: The message/instruction to execute when the job triggers.
             timezone: IANA timezone (default "UTC"). E.g., "Asia/Shanghai", "US/Eastern".
-            channel_id: Optional channel to deliver the response to.
+            channel_id: Optional channel for memory scoping.
+            delivery_platform: Platform to deliver results to ("telegram", "discord",
+                or "" for no delivery). When set, the job response is sent to the
+                specified chat after execution.
+            delivery_chat_id: The chat/channel ID on the delivery platform
+                (e.g., Telegram chat_id, Discord channel_id).
             isolated: If True, each run uses a fresh conversation thread (no memory
                 of previous runs). If False (default), all runs share the same thread
                 so the agent can reference prior executions.
@@ -434,6 +479,8 @@ def create_scheduler_tools(scheduler: CronScheduler, agent_id: str) -> list:
             prompt=prompt,
             tz=timezone,
             channel_id=channel_id,
+            delivery_platform=delivery_platform,
+            delivery_chat_id=delivery_chat_id,
             isolated=isolated,
         )
         return (

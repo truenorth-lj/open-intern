@@ -109,6 +109,8 @@ class ScheduledJobRecord(Base):
     timezone = Column(String, nullable=False, default="UTC")
     prompt = Column(Text, nullable=False)
     channel_id = Column(String, nullable=False, default="")
+    delivery_platform = Column(String, nullable=False, default="")
+    delivery_chat_id = Column(String, nullable=False, default="")
     isolated = Column(Boolean, nullable=False, default=False)
     enabled = Column(Boolean, nullable=False, default=True)
     last_run_at = Column(DateTime(timezone=True), nullable=True)

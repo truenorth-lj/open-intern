@@ -725,6 +725,8 @@ class ScheduledJobCreate(BaseModel):
     prompt: str
     timezone: str = "UTC"
     channel_id: str = ""
+    delivery_platform: str = ""  # "" | "telegram" | "discord"
+    delivery_chat_id: str = ""
     isolated: bool = False
 
     @field_validator("schedule_type")
@@ -742,6 +744,8 @@ class ScheduledJobUpdate(BaseModel):
     timezone: str | None = None
     prompt: str | None = None
     channel_id: str | None = None
+    delivery_platform: str | None = None
+    delivery_chat_id: str | None = None
     isolated: bool | None = None
     enabled: bool | None = None
 
@@ -772,6 +776,8 @@ async def create_scheduled_job(body: ScheduledJobCreate):
             prompt=body.prompt,
             tz=body.timezone,
             channel_id=body.channel_id,
+            delivery_platform=body.delivery_platform,
+            delivery_chat_id=body.delivery_chat_id,
             isolated=body.isolated,
         )
         return result

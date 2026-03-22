@@ -38,6 +38,17 @@ def get_cron_scheduler() -> CronScheduler:
     return _cron_scheduler
 
 
+def get_bot(platform: str, agent_id: str):
+    """Get a platform bot instance for outbound messaging."""
+    if platform == "telegram":
+        bot = _telegram_bots.get(agent_id)
+        if bot:
+            return bot
+        # Fallback: try "default" bot
+        return _telegram_bots.get("default")
+    return None
+
+
 def get_agent(agent_id: str | None = None) -> OpenInternAgent:
     """Get an agent by ID, or the default agent."""
     mgr = get_agent_manager()
