@@ -24,6 +24,7 @@ class TelegramBot(Integration):
         self._app = None
         self._bot_id: str = ""
         self._bot_username: str = ""
+        self.webhook_secret: str = ""
         # Thread management: chat_id -> current thread_id
         self._threads: dict[int, str] = {}
 
@@ -62,7 +63,13 @@ class TelegramBot(Integration):
         """Register the webhook URL with Telegram API."""
         if not self._app:
             raise RuntimeError("Bot not started. Call start() first.")
-        await self._app.bot.set_webhook(url=webhook_url, drop_pending_updates=True)
+        # Generate a secret token for webhook verification
+        self.webhook_secret = uuid4().hex
+        await self._app.bot.set_webhook(
+            url=webhook_url,
+            drop_pending_updates=True,
+            secret_token=self.webhook_secret,
+        )
         logger.info(f"Webhook set for @{self._bot_username}: {webhook_url}")
 
     async def process_update(self, update_data: dict) -> None:

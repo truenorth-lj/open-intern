@@ -142,6 +142,12 @@ def create_app(config: AppConfig) -> FastAPI:
                 status_code=404,
                 content={"detail": f"No bot for agent '{agent_id}'"},
             )
+        # Verify the request is from Telegram (constant-time comparison)
+        import secrets
+
+        incoming = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
+        if not bot.webhook_secret or not secrets.compare_digest(incoming, bot.webhook_secret):
+            return JSONResponse(status_code=403, content={"detail": "Forbidden"})
         update_data = await request.json()
 
         import asyncio
@@ -340,6 +346,12 @@ async def run_agent(platform: str = "web") -> None:
         await run_web_only(app, config)
     elif platform == "web":
         logger.info(f"Running in web-only mode (dashboard API on port {config.port})")
+        # Auto-setup platform bots for agents that have tokens configured
+        for plat in ("telegram", "discord", "lark"):
+            try:
+                await _setup_platform_bots(app, config, manager, plat)
+            except Exception as e:
+                logger.warning(f"Failed to setup {plat} bots in web mode: {e}")
         await run_web_only(app, config)
     elif platform == "slack":
         logger.error("Slack integration not yet implemented.")

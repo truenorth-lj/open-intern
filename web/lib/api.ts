@@ -231,7 +231,14 @@ export async function testTelegramConnection(
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || "Failed to test Telegram connection");
+    const detail = err.detail;
+    let msg = "Failed to test Telegram connection";
+    if (typeof detail === "string") {
+      msg = detail;
+    } else if (Array.isArray(detail)) {
+      msg = detail.map((d: { msg?: string }) => d.msg || JSON.stringify(d)).join("; ");
+    }
+    throw new Error(msg);
   }
   return res.json();
 }
