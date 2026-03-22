@@ -205,6 +205,20 @@ export async function getTokenUsageSummary() {
   return res.json();
 }
 
+export async function getTokenUsageTimeseries(params: {
+  start?: string;
+  end?: string;
+  agent_id?: string;
+}) {
+  const qs = new URLSearchParams();
+  if (params.start) qs.set("start", params.start);
+  if (params.end) qs.set("end", params.end);
+  if (params.agent_id) qs.set("agent_id", params.agent_id);
+  const res = await apiFetch(`/token-usage/timeseries?${qs}`);
+  if (!res.ok) throw new Error("Failed to fetch token usage timeseries");
+  return res.json();
+}
+
 // --- Agent CRUD ---
 
 export interface AgentInfo {

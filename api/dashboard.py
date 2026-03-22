@@ -909,6 +909,84 @@ def get_token_usage_summary(user: dict = Depends(get_current_user)):
         }
 
 
+@router.get("/token-usage/timeseries")
+def get_token_usage_timeseries(
+    start: str | None = None,
+    end: str | None = None,
+    agent_id: str | None = None,
+    user: dict = Depends(get_current_user),
+):
+    """Get daily token usage timeseries, optionally filtered by agent and date range."""
+    if _config is None:
+        raise HTTPException(status_code=503, detail="Not initialized")
+    from sqlalchemy import Date, cast, func
+
+    accessible = get_user_accessible_agents(user)
+    if agent_id and accessible is not None and agent_id not in accessible:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    store = _get_memory_store(agent_id or "default")
+    with store._session() as session:
+        day_col = cast(TokenUsageRecord.created_at, Date).label("day")
+        q = (
+            session.query(
+                day_col,
+                TokenUsageRecord.agent_id,
+                func.coalesce(func.sum(TokenUsageRecord.input_tokens), 0).label("input_tokens"),
+                func.coalesce(func.sum(TokenUsageRecord.output_tokens), 0).label("output_tokens"),
+                func.coalesce(func.sum(TokenUsageRecord.total_tokens), 0).label("total_tokens"),
+                func.count(TokenUsageRecord.id).label("request_count"),
+            )
+            .group_by(day_col, TokenUsageRecord.agent_id)
+            .order_by(day_col)
+        )
+
+        if agent_id:
+            q = q.filter(TokenUsageRecord.agent_id == agent_id)
+        elif accessible is not None:
+            q = q.filter(TokenUsageRecord.agent_id.in_(accessible))
+
+        start_dt: datetime | None = None
+        end_dt: datetime | None = None
+        if start:
+            try:
+                start_dt = datetime.fromisoformat(start)
+                if start_dt.tzinfo is None:
+                    start_dt = start_dt.replace(tzinfo=timezone.utc)
+                else:
+                    start_dt = start_dt.astimezone(timezone.utc)
+                q = q.filter(TokenUsageRecord.created_at >= start_dt)
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Invalid start date")
+        if end:
+            try:
+                end_dt = datetime.fromisoformat(end)
+                if end_dt.tzinfo is None:
+                    end_dt = end_dt.replace(tzinfo=timezone.utc)
+                else:
+                    end_dt = end_dt.astimezone(timezone.utc)
+                q = q.filter(TokenUsageRecord.created_at <= end_dt)
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Invalid end date")
+        if start_dt is not None and end_dt is not None and start_dt > end_dt:
+            raise HTTPException(status_code=400, detail="start must be before end")
+
+        points = []
+        for row in q.all():
+            points.append(
+                {
+                    "date": row.day.isoformat() if row.day else "",
+                    "agent_id": row.agent_id,
+                    "input_tokens": row.input_tokens,
+                    "output_tokens": row.output_tokens,
+                    "total_tokens": row.total_tokens,
+                    "request_count": row.request_count,
+                }
+            )
+
+        return {"points": points}
+
+
 # --- Scheduled Jobs ---
 
 
