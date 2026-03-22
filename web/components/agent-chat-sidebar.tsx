@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, use } from "react";
 import { useRouter, usePathname } from "next/navigation";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -14,23 +15,30 @@ interface Thread {
   created_at: string;
 }
 
-export function ChatSidebar() {
+export function AgentChatSidebar({
+  paramsPromise,
+}: {
+  paramsPromise: Promise<{ agentId: string }>;
+}) {
+  const { agentId } = use(paramsPromise);
   const [threads, setThreads] = useState<Thread[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const router = useRouter();
   const pathname = usePathname();
 
+  const chatBase = `/agents/${agentId}/chat`;
+
   // Extract current threadId from URL
-  const activeThreadId = pathname.startsWith("/chat/")
-    ? pathname.replace("/chat/", "")
+  const activeThreadId = pathname.startsWith(`${chatBase}/`)
+    ? pathname.replace(`${chatBase}/`, "")
     : null;
 
   const loadThreads = useCallback(() => {
-    getThreads()
+    getThreads(agentId)
       .then((data) => setThreads(data.threads))
       .catch((err) => console.error("Failed to load threads:", err));
-  }, []);
+  }, [agentId]);
 
   useEffect(() => {
     loadThreads();
@@ -38,7 +46,6 @@ export function ChatSidebar() {
     return () => clearInterval(interval);
   }, [loadThreads]);
 
-  // Listen for custom event to refresh threads (from NewChatPage)
   useEffect(() => {
     const handler = () => loadThreads();
     document.addEventListener("oi:refresh-threads", handler);
@@ -53,7 +60,7 @@ export function ChatSidebar() {
     }
     setThreads((prev) => prev.filter((t) => t.thread_id !== threadId));
     if (activeThreadId === threadId) {
-      router.push("/chat");
+      router.push(chatBase);
     }
   }
 
@@ -70,7 +77,9 @@ export function ChatSidebar() {
         console.error("Failed to update thread title:", err);
       }
       setThreads((prev) =>
-        prev.map((t) => (t.thread_id === threadId ? { ...t, title: editTitle.trim() } : t))
+        prev.map((t) =>
+          t.thread_id === threadId ? { ...t, title: editTitle.trim() } : t,
+        ),
       );
     }
     setEditingId(null);
@@ -78,9 +87,15 @@ export function ChatSidebar() {
 
   return (
     <div className="w-56 border-r flex flex-col">
-      <div className="p-3">
+      <div className="p-3 space-y-2">
+        <Link
+          href="/agents"
+          className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+        >
+          &larr; All Agents
+        </Link>
         <Button
-          onClick={() => router.push("/chat")}
+          onClick={() => router.push(chatBase)}
           variant="outline"
           className="w-full"
         >
@@ -98,7 +113,7 @@ export function ChatSidebar() {
                   ? "bg-secondary text-secondary-foreground"
                   : "text-muted-foreground hover:bg-muted"
               }`}
-              onClick={() => router.push(`/chat/${thread.thread_id}`)}
+              onClick={() => router.push(`${chatBase}/${thread.thread_id}`)}
             >
               {editingId === thread.thread_id ? (
                 <Input
@@ -116,7 +131,8 @@ export function ChatSidebar() {
               ) : (
                 <>
                   <span className="truncate flex-1">
-                    {thread.title || `Thread ${thread.thread_id.slice(0, 8)}`}
+                    {thread.title ||
+                      `Thread ${thread.thread_id.slice(0, 8)}`}
                   </span>
                   <button
                     className="opacity-0 group-hover:opacity-100 text-xs text-muted-foreground ml-1"

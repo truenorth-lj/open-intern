@@ -7,7 +7,7 @@ import { useAuth } from "@/lib/auth-context";
 
 const navItems = [
   { href: "/", label: "Status", icon: "●" },
-  { href: "/chat", label: "Chat", icon: "💬" },
+  { href: "/agents", label: "Agents", icon: "🤖" },
   { href: "/memories", label: "Memories", icon: "🧠" },
   { href: "/skills", label: "Skills", icon: "🛠" },
   { href: "/settings", label: "Settings", icon: "⚙" },
