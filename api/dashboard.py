@@ -319,17 +319,30 @@ async def chat(body: ChatRequest, user: dict = Depends(get_current_user)):
     is_new = not body.thread_id
     thread_id = body.thread_id or str(uuid4())
     user_name = user.get("email", "user").split("@")[0]
-    response, token_usage = await agent.chat(
-        body.message,
-        context={
-            "platform": "web",
-            "channel_id": "web-dashboard",
-            "user_name": user_name,
-            "user_id": user.get("user_id", ""),
-            "is_dm": True,
-        },
-        thread_id=thread_id,
-    )
+    try:
+        response, token_usage = await agent.chat(
+            body.message,
+            context={
+                "platform": "web",
+                "channel_id": "web-dashboard",
+                "user_name": user_name,
+                "user_id": user.get("user_id", ""),
+                "is_dm": True,
+            },
+            thread_id=thread_id,
+        )
+    except TypeError as e:
+        if "api_key" in str(e) or "authentication" in str(e).lower():
+            raise HTTPException(
+                status_code=422,
+                detail="NO_API_KEY: This agent has no LLM API key configured. "
+                "Set one in the agent's edit page, or configure a system default "
+                "in Settings.",
+            )
+        raise HTTPException(status_code=500, detail=f"LLM error: {e}")
+    except Exception as e:
+        logger.error("Chat failed for agent %s: %s", agent_id, e)
+        raise HTTPException(status_code=500, detail=f"Agent error: {e}")
 
     user_id = user.get("user_id", "")
 

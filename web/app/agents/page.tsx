@@ -37,6 +37,7 @@ const defaultAgentForm = {
   llm_provider: "claude",
   llm_model: "claude-sonnet-4-6",
   llm_temperature: 0.7,
+  llm_api_key: "",
   sandbox_enabled: true,
 };
 
@@ -84,6 +85,7 @@ export default function AgentsPage() {
       llm_provider: agent.llm_provider,
       llm_model: agent.llm_model,
       llm_temperature: agent.llm_temperature,
+      llm_api_key: "",
       sandbox_enabled: agent.sandbox_enabled,
     });
     setAgentMsg("");
@@ -103,9 +105,11 @@ export default function AgentsPage() {
     }
     try {
       if (editingAgent) {
-        const { agent_id: _id, ...updates } = agentForm;
+        const { agent_id: _id, llm_api_key, ...updates } = agentForm;
         void _id;
-        await updateAgent(editingAgent, updates);
+        const payload: Record<string, unknown> = { ...updates };
+        if (llm_api_key) payload.llm_api_key = llm_api_key;
+        await updateAgent(editingAgent, payload);
         setAgentMsg("Agent updated. Restart to apply runtime changes.");
       } else {
         await createAgent(agentForm);
@@ -300,6 +304,25 @@ export default function AgentsPage() {
                     />
                   </div>
                 </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="llm-api-key">API Key</Label>
+                <Input
+                  id="llm-api-key"
+                  type="password"
+                  placeholder={editingAgent ? "(leave blank to keep current key)" : "sk-..."}
+                  value={agentForm.llm_api_key}
+                  onChange={(e) =>
+                    setAgentForm((f) => ({
+                      ...f,
+                      llm_api_key: e.target.value,
+                    }))
+                  }
+                />
+                <p className="text-xs text-muted-foreground">
+                  LLM API key for this agent. Falls back to system default if empty.
+                </p>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
