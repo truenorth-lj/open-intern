@@ -84,6 +84,11 @@ class AppConfig(BaseSettings):
     port: int = 8000
     encryption_key: str = ""
 
+    # Auth
+    auth_secret: str = ""
+    admin_email: str = "admin@open-intern.local"
+    dashboard_password: str = ""
+
     # Shared infra keys
     e2b_api_key: str = ""
 

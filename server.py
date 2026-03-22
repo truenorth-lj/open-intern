@@ -120,7 +120,7 @@ def create_app(config: AppConfig) -> FastAPI:
     from api.auth import init_auth
     from api.auth import router as auth_router
 
-    init_auth(config.database_url)
+    init_auth(config)
     app.include_router(auth_router)
 
     # Mount dashboard API
@@ -272,7 +272,8 @@ async def run_web_only(app: FastAPI, config: AppConfig) -> None:
     """Run only the web dashboard API (no chat platform)."""
     import uvicorn
 
-    server_config = uvicorn.Config(app, host="0.0.0.0", port=_get_port(config), log_level="info")
+    host = os.environ.get("HOST", "0.0.0.0")
+    server_config = uvicorn.Config(app, host=host, port=_get_port(config), log_level="info")
     server = uvicorn.Server(server_config)
     await server.serve()
 

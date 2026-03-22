@@ -6,7 +6,6 @@ import hashlib
 import hmac
 import json
 import logging
-import os
 import secrets
 import time
 from base64 import urlsafe_b64decode, urlsafe_b64encode
@@ -18,6 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from core.config import AppConfig
 from core.database import get_session_factory
 from core.exceptions import ConfigurationError
 from memory.store import UserAgentAccess, UserRecord
@@ -27,21 +27,29 @@ router = APIRouter(prefix="/api/dashboard/auth", tags=["auth"])
 
 _session_factory = None
 
-# JWT settings
-JWT_SECRET = os.environ.get("AUTH_SECRET", "")
+# JWT settings (populated by init_auth)
+JWT_SECRET = ""
 JWT_EXPIRY_SECONDS = 60 * 60 * 24 * 7  # 7 days
 
+# Admin credentials (populated by init_auth)
+_admin_email = "admin@open-intern.local"
+_admin_password = ""
 
-def init_auth(database_url: str):
-    global _session_factory, JWT_SECRET
-    _session_factory = get_session_factory(database_url)
-    # Fail-fast: validate AUTH_SECRET at init time, not at first JWT creation
-    JWT_SECRET = os.environ.get("AUTH_SECRET", "")
+
+def init_auth(config: AppConfig) -> None:
+    """Initialize auth with AppConfig (reads .env via pydantic-settings)."""
+    global _session_factory, JWT_SECRET, _admin_email, _admin_password
+    _session_factory = get_session_factory(config.database_url)
+    JWT_SECRET = config.auth_secret
+    _admin_email = config.admin_email
+    _admin_password = config.dashboard_password
     if not JWT_SECRET:
         logger.warning(
             "AUTH_SECRET not set — authentication will fail. "
             "Set AUTH_SECRET environment variable before using the dashboard."
         )
+    if not _admin_password:
+        logger.warning("DASHBOARD_PASSWORD not configured; admin login disabled")
 
 
 def _get_session() -> Session:
@@ -139,21 +147,18 @@ class LoginResponse(BaseModel):
 
 @router.post("/login", response_model=LoginResponse)
 def login(body: LoginRequest):
-    admin_email = os.environ.get("ADMIN_EMAIL", "admin@open-intern.local")
-    admin_password = os.environ.get("DASHBOARD_PASSWORD", "")
-
     # Check admin login
-    if body.email == admin_email and admin_password and body.password == admin_password:
+    if body.email == _admin_email and _admin_password and body.password == _admin_password:
         payload = {
             "user_id": "admin",
-            "email": admin_email,
+            "email": _admin_email,
             "role": "admin",
             "exp": time.time() + JWT_EXPIRY_SECONDS,
         }
         token = _create_jwt(payload)
         return LoginResponse(
             token=token,
-            user={"user_id": "admin", "email": admin_email, "role": "admin"},
+            user={"user_id": "admin", "email": _admin_email, "role": "admin"},
         )
 
     # Check user login

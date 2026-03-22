@@ -18,6 +18,7 @@ os.environ.setdefault(
 
 from fastapi import FastAPI
 
+import api.auth as auth_module
 from api.auth import (
     _create_jwt,
     _decode_jwt,
@@ -27,6 +28,9 @@ from api.auth import (
     init_auth,
     router,
 )
+
+# Set JWT_SECRET for unit tests that don't go through init_auth
+auth_module.JWT_SECRET = os.environ.get("AUTH_SECRET", "test-secret")
 
 # --- Unit tests for auth utilities (no DB required) ---
 
@@ -146,7 +150,10 @@ def client():
     """Create test client with real database."""
     if not _db_available:
         pytest.skip("PostgreSQL not available")
-    init_auth(os.environ["DATABASE_URL"])
+    from core.config import AppConfig
+
+    config = AppConfig()
+    init_auth(config)
     app = FastAPI()
     app.include_router(router)
     return TestClient(app)
