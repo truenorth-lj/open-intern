@@ -350,6 +350,7 @@ class AgentManager:
             self._reload_agent(agent_id_val)
         except Exception as e:
             logger.warning(f"Agent {agent_id_val} updated in DB but reload failed: {e}")
+            return {"agent_id": agent_id_val, "status": "updated_reload_failed"}
         return {"agent_id": agent_id_val, "status": "updated"}
 
     def delete_agent(self, agent_id: str) -> dict:

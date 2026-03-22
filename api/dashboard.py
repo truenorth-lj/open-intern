@@ -172,8 +172,9 @@ async def reload_agent(agent_id: str, admin: dict = Depends(require_admin)):
         raise HTTPException(status_code=404, detail=f"Agent '{agent_id}' not found")
     try:
         mgr._reload_agent(agent_id)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Reload failed: {e}")
+    except Exception:
+        logger.exception("Failed to reload agent %s", agent_id)
+        raise HTTPException(status_code=500, detail="Reload failed due to internal error")
     return {"ok": True, "agent_id": agent_id, "status": "reloaded"}
 
 
