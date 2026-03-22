@@ -93,6 +93,7 @@ class E2BSandboxBackend(SandboxBackendProtocol):
     def _ensure_sandbox(self):
         if self._sandbox is None:
             self.connect()
+            logger.info(f"E2B sandbox connected (lazy): {self._sandbox.sandbox_id}")
         return self._sandbox
 
     # --- Execute ---
