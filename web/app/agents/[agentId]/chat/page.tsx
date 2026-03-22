@@ -20,6 +20,7 @@ export default function AgentNewChatPage({
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [streaming, setStreaming] = useState(false);
+  const [toolStatus, setToolStatus] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
   // Track accumulated response text for sessionStorage on redirect
@@ -58,6 +59,7 @@ export default function AgentNewChatPage({
       await sendMessageStream(
         text,
         (token) => {
+          setToolStatus("");
           streamedTextRef.current += token;
           setMessages((prev) => {
             const updated = [...prev];
@@ -70,6 +72,7 @@ export default function AgentNewChatPage({
         },
         (data) => {
           setStreaming(false);
+          setToolStatus("");
           const initialMessages: ChatMessage[] = [
             { role: "user", content: text },
             { role: "assistant", content: streamedTextRef.current },
@@ -83,6 +86,7 @@ export default function AgentNewChatPage({
         },
         (error) => {
           setStreaming(false);
+          setToolStatus("");
           setMessages((prev) => {
             const updated = [...prev];
             const last = updated[updated.length - 1];
@@ -96,6 +100,14 @@ export default function AgentNewChatPage({
         },
         undefined,
         agentId,
+        undefined,
+        (data) => {
+          if (data.status === "running") {
+            setToolStatus(`Calling ${data.tool}...`);
+          } else {
+            setToolStatus("");
+          }
+        },
       );
     } catch (err) {
       setStreaming(false);
@@ -176,7 +188,7 @@ export default function AgentNewChatPage({
                 }`}
               >
                 <p className="text-sm whitespace-pre-wrap">
-                  {msg.content || (streaming && i === messages.length - 1 ? "Thinking..." : "")}
+                  {msg.content || (streaming && i === messages.length - 1 ? (toolStatus || "Thinking...") : "")}
                 </p>
               </Card>
             </div>

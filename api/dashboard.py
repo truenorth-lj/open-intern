@@ -513,6 +513,8 @@ async def chat_stream(body: ChatRequest, user: dict = Depends(get_current_user))
             ):
                 if chunk["type"] == "token":
                     yield f"data: {json.dumps(chunk)}\n\n"
+                elif chunk["type"] == "status":
+                    yield f"data: {json.dumps(chunk)}\n\n"
                 elif chunk["type"] == "done":
                     token_usage = chunk.get("token_usage", {})
         except Exception as e:

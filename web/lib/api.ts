@@ -76,6 +76,7 @@ export async function sendMessageStream(
   threadId?: string,
   agentId?: string,
   signal?: AbortSignal,
+  onStatus?: (data: { tool: string; status: "running" | "done" }) => void,
 ): Promise<void> {
   const res = await apiFetch("/chat/stream", {
     method: "POST",
@@ -111,6 +112,8 @@ export async function sendMessageStream(
         const event = JSON.parse(jsonStr);
         if (event.type === "token") {
           onToken(event.content);
+        } else if (event.type === "status") {
+          onStatus?.(event);
         } else if (event.type === "done") {
           onDone(event);
         } else if (event.type === "error") {
