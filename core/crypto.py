@@ -7,13 +7,15 @@ from functools import lru_cache
 
 from cryptography.fernet import Fernet
 
+from core.exceptions import ConfigurationError
+
 
 @lru_cache(maxsize=1)
 def _get_fernet() -> Fernet:
     """Get a cached Fernet instance (avoids recreating on every call)."""
     key = os.environ.get("ENCRYPTION_KEY", "")
     if not key:
-        raise RuntimeError(
+        raise ConfigurationError(
             "ENCRYPTION_KEY not set. Generate with: "
             "python -c 'from cryptography.fernet import "
             "Fernet; print(Fernet.generate_key().decode())'"

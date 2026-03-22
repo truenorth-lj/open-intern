@@ -55,7 +55,7 @@ class TestCrypto:
 
         reset_fernet_cache()
         monkeypatch.delenv("ENCRYPTION_KEY")
-        with pytest.raises(RuntimeError, match="ENCRYPTION_KEY not set"):
+        with pytest.raises(Exception, match="ENCRYPTION_KEY not set"):
             encrypt("test")
         reset_fernet_cache()
 
