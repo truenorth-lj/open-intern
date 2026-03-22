@@ -10,7 +10,7 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 # Install Python dependencies
 COPY pyproject.toml uv.lock README.md ./
-RUN uv sync --frozen --no-dev --extra all --extra telegram && \
+RUN uv sync --frozen --no-dev --extra all && \
     uv pip install fastapi uvicorn psycopg2-binary
 
 # Copy source
