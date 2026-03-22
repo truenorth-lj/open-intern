@@ -51,9 +51,13 @@ class TestCrypto:
         assert decrypt(c2) == plaintext
 
     def test_missing_key_raises(self, monkeypatch):
+        from core.crypto import reset_fernet_cache
+
+        reset_fernet_cache()
         monkeypatch.delenv("ENCRYPTION_KEY")
         with pytest.raises(RuntimeError, match="ENCRYPTION_KEY not set"):
             encrypt("test")
+        reset_fernet_cache()
 
 
 # --- AgentRecord schema tests ---

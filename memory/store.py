@@ -20,9 +20,10 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
-    create_engine,
 )
-from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
+from sqlalchemy.orm import DeclarativeBase, Session
+
+from core.database import get_engine, get_session_factory
 
 logger = logging.getLogger(__name__)
 
@@ -214,18 +215,8 @@ class MemoryStore:
     """Persistent memory store with 3-layer isolation and per-agent scoping."""
 
     def __init__(self, database_url: str, agent_id: str = "default"):
-        # Use default psycopg2 driver (not psycopg v3) to avoid
-        # prepared statement caching conflicts with LangGraph
-        sa_url = database_url
-        if sa_url.startswith("postgresql+psycopg://"):
-            sa_url = sa_url.replace("postgresql+psycopg://", "postgresql://", 1)
-        self.engine = create_engine(
-            sa_url,
-            pool_size=5,
-            max_overflow=10,
-            pool_pre_ping=True,
-        )
-        self._session_factory = sessionmaker(bind=self.engine)
+        self.engine = get_engine(database_url)
+        self._session_factory = get_session_factory(database_url)
         self.agent_id = agent_id
 
     def initialize(self) -> None:
@@ -265,6 +256,20 @@ class MemoryStore:
             )
             conn.commit()
 
+    @staticmethod
+    def _record_to_entry(record: MemoryRecord) -> MemoryEntry:
+        """Convert a DB record to a MemoryEntry."""
+        return MemoryEntry(
+            id=record.id,
+            content=record.content,
+            scope=MemoryScope(record.scope),
+            scope_id=record.scope_id,
+            source=record.source,
+            importance=record.importance,
+            created_at=record.created_at,
+            metadata=json.loads(record.metadata_json),
+        )
+
     def recall(
         self,
         query: str,
@@ -293,21 +298,7 @@ class MemoryStore:
             q = q.order_by(MemoryRecord.importance.desc(), MemoryRecord.created_at.desc())
             q = q.limit(limit)
 
-            results = []
-            for record in q.all():
-                results.append(
-                    MemoryEntry(
-                        id=record.id,
-                        content=record.content,
-                        scope=MemoryScope(record.scope),
-                        scope_id=record.scope_id,
-                        source=record.source,
-                        importance=record.importance,
-                        created_at=record.created_at,
-                        metadata=json.loads(record.metadata_json),
-                    )
-                )
-            return results
+            return [self._record_to_entry(r) for r in q.all()]
 
     def get_context_memories(
         self,
@@ -326,21 +317,7 @@ class MemoryStore:
                 .limit(limit)
             )
 
-            results = []
-            for record in q.all():
-                results.append(
-                    MemoryEntry(
-                        id=record.id,
-                        content=record.content,
-                        scope=MemoryScope(record.scope),
-                        scope_id=record.scope_id,
-                        source=record.source,
-                        importance=record.importance,
-                        created_at=record.created_at,
-                        metadata=json.loads(record.metadata_json),
-                    )
-                )
-            return results
+            return [self._record_to_entry(r) for r in q.all()]
 
     def forget(self, memory_id: str) -> bool:
         """Delete a specific memory."""

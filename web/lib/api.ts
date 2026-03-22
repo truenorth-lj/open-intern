@@ -2,7 +2,7 @@ import type { Skill } from "./types";
 
 const BASE = "/api/dashboard";
 
-async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
+export async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
   const headers = new Headers(init?.headers);
   const res = await fetch(`${BASE}${path}`, { ...init, headers });
   if (res.status === 401) {

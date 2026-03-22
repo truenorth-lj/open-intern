@@ -4,13 +4,8 @@ import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { getStatus, getTokenUsageSummary } from "@/lib/api";
+import { formatTokenCount } from "@/lib/utils";
 import type { AgentStatus } from "@/lib/types";
-
-function formatTokenCount(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
-  return String(n);
-}
 
 interface TokenSummary {
   agents: {

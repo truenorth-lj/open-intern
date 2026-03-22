@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import logging
+import os
 from datetime import datetime, timezone
 from enum import Enum
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Any
 
@@ -37,6 +39,32 @@ class AuditEntry(BaseModel):
     details: dict[str, Any] = Field(default_factory=dict)
 
 
+def _create_audit_logger(audit_file: Path) -> logging.Logger:
+    """Create a dedicated logger with rotating file handler for audit entries."""
+    audit_file.parent.mkdir(parents=True, exist_ok=True)
+
+    audit_logger = logging.getLogger("open_intern.audit")
+    audit_logger.setLevel(logging.INFO)
+    audit_logger.propagate = False
+
+    if not audit_logger.handlers:
+        handler = RotatingFileHandler(
+            audit_file,
+            maxBytes=10 * 1024 * 1024,  # 10 MB
+            backupCount=5,
+        )
+        handler.setFormatter(logging.Formatter("%(message)s"))
+        audit_logger.addHandler(handler)
+
+        # Set file permissions to owner-only (on Unix)
+        try:
+            os.chmod(audit_file, 0o600)
+        except OSError:
+            pass
+
+    return audit_logger
+
+
 class SafetyMiddleware:
     """Every agent action passes through this middleware."""
 
@@ -44,7 +72,7 @@ class SafetyMiddleware:
         self.config = config
         self.audit_log: list[AuditEntry] = []
         self._audit_file = Path("logs/audit.jsonl")
-        self._audit_file.parent.mkdir(parents=True, exist_ok=True)
+        self._audit_logger = _create_audit_logger(self._audit_file)
 
     def classify_action(self, action_type: str) -> ActionLevel:
         """Classify an action into a safety level."""
@@ -93,10 +121,12 @@ class SafetyMiddleware:
         return verdict
 
     def _log(self, entry: AuditEntry) -> None:
-        """Append to in-memory log and audit file."""
+        """Append to in-memory log and audit file (via rotating handler)."""
         self.audit_log.append(entry)
-        with open(self._audit_file, "a") as f:
-            f.write(entry.model_dump_json() + "\n")
+        try:
+            self._audit_logger.info(entry.model_dump_json())
+        except Exception:
+            logger.warning("Failed to write audit log entry", exc_info=True)
         logger.info(f"[AUDIT] {entry.verdict.value}: {entry.action_type} - {entry.description}")
 
     def get_recent_audit(self, limit: int = 20) -> list[AuditEntry]:
