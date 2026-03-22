@@ -34,14 +34,15 @@ open_intern/
 ├── server.py              # FastAPI app factory + platform runners
 ├── docker-compose.yml     # PostgreSQL (pgvector) + agent
 ├── Dockerfile             # Python 3.12-slim container
-└── pyproject.toml         # Hatchling build, ruff, dependencies
+├── pyproject.toml         # Hatchling build, ruff, dependencies
+└── uv.lock                # uv lockfile (committed)
 ```
 
 ## Commands
 
 ```bash
-# Install (development)
-pip install -e ".[all,dev]"
+# Install (development) — requires uv (https://docs.astral.sh/uv/)
+uv sync --all-extras          # Install all deps + dev deps into .venv
 
 # CLI commands
 open_intern init          # Create config/agent.yaml from example

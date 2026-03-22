@@ -2,14 +2,16 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# Install system dependencies
+# Install system dependencies + uv
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc libpq-dev && \
     rm -rf /var/lib/apt/lists/*
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 # Install Python dependencies
-COPY pyproject.toml README.md ./
-RUN pip install --no-cache-dir ".[all]" fastapi uvicorn psycopg2-binary
+COPY pyproject.toml uv.lock README.md ./
+RUN uv sync --frozen --no-dev --extra all && \
+    uv pip install fastapi uvicorn psycopg2-binary
 
 # Copy source
 COPY . .
