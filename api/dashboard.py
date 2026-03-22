@@ -725,6 +725,7 @@ class ScheduledJobCreate(BaseModel):
     prompt: str
     timezone: str = "UTC"
     channel_id: str = ""
+    isolated: bool = False
 
     @field_validator("schedule_type")
     @classmethod
@@ -741,6 +742,7 @@ class ScheduledJobUpdate(BaseModel):
     timezone: str | None = None
     prompt: str | None = None
     channel_id: str | None = None
+    isolated: bool | None = None
     enabled: bool | None = None
 
     @field_validator("schedule_type")
@@ -770,6 +772,7 @@ async def create_scheduled_job(body: ScheduledJobCreate):
             prompt=body.prompt,
             tz=body.timezone,
             channel_id=body.channel_id,
+            isolated=body.isolated,
         )
         return result
     except Exception as e:
