@@ -101,29 +101,33 @@ export async function getMemories(scope?: string, limit = 50, offset = 0, agentI
 }
 
 export async function getMemoryStats(agentId?: string) {
-  const params = agentId ? `?agent_id=${agentId}` : "";
-  const res = await apiFetch(`/memories/stats${params}`);
+  const params = new URLSearchParams();
+  if (agentId) params.set("agent_id", agentId);
+  const res = await apiFetch(`/memories/stats?${params}`);
   if (!res.ok) throw new Error("Failed to fetch memory stats");
   return res.json();
 }
 
 export async function getSkills(agentId?: string): Promise<{ skills: Skill[] }> {
-  const params = agentId ? `?agent_id=${agentId}` : "";
-  const res = await apiFetch(`/skills${params}`);
+  const params = new URLSearchParams();
+  if (agentId) params.set("agent_id", agentId);
+  const res = await apiFetch(`/skills?${params}`);
   if (!res.ok) throw new Error("Failed to fetch skills");
   return res.json();
 }
 
 export async function getSkill(name: string, agentId?: string): Promise<Skill> {
-  const params = agentId ? `?agent_id=${agentId}` : "";
-  const res = await apiFetch(`/skills/${name}${params}`);
+  const params = new URLSearchParams();
+  if (agentId) params.set("agent_id", agentId);
+  const res = await apiFetch(`/skills/${name}?${params}`);
   if (!res.ok) throw new Error("Failed to fetch skill");
   return res.json();
 }
 
 export async function deleteMemory(id: string, agentId?: string) {
-  const params = agentId ? `?agent_id=${agentId}` : "";
-  const res = await apiFetch(`/memories/${id}${params}`, { method: "DELETE" });
+  const params = new URLSearchParams();
+  if (agentId) params.set("agent_id", agentId);
+  const res = await apiFetch(`/memories/${id}?${params}`, { method: "DELETE" });
   if (!res.ok) throw new Error("Failed to delete memory");
   return res.json();
 }
