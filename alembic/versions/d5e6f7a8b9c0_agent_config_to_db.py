@@ -141,7 +141,7 @@ def downgrade() -> None:
                 )
             except Exception as e:
                 logger.warning(
-                    "Decrypt failed for agent %s, preserving encrypted value: %s",
+                    "Decrypt failed for agent %s: %s",
                     row[0],
                     e,
                 )

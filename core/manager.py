@@ -114,7 +114,10 @@ class AgentManager:
         if agent_key:
             return agent_key
         # 2. System default
-        return self._get_system_setting("default_llm_api_key", is_secret=True)
+        system_key = self._get_system_setting("default_llm_api_key", is_secret=True)
+        if not system_key:
+            logger.warning("Agent %s has no LLM API key configured", rec.agent_id)
+        return system_key
 
     def _get_system_setting(self, key: str, is_secret: bool = False) -> str:
         """Read a system setting from DB."""
