@@ -208,6 +208,14 @@ export default function AdminPage() {
   async function handleSubmitAgent(e: React.FormEvent) {
     e.preventDefault();
     setAgentMsg("");
+    if (!editingAgent && !agentForm.agent_id.trim()) {
+      setAgentMsg("Agent ID is required.");
+      return;
+    }
+    if (!agentForm.name.trim()) {
+      setAgentMsg("Name is required.");
+      return;
+    }
     try {
       if (editingAgent) {
         const { agent_id: _agentId, ...updates } = agentForm;
