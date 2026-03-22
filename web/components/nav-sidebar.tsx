@@ -7,6 +7,7 @@ import { useAuth } from "@/lib/auth-context";
 
 const globalItems = [
   { href: "/agents", label: "Agents", icon: "+" },
+  { href: "/usage", label: "Usage", icon: "U" },
   { href: "/settings", label: "Settings", icon: "S" },
 ];
 
