@@ -99,6 +99,20 @@ class AgentManager:
                 record.e2b_sandbox_id = sandbox_id
                 session.commit()
 
+    def pause_all_sandboxes(self) -> None:
+        """Pause all active E2B sandboxes and persist their IDs for later resume."""
+        for agent_id, agent in self._agents.items():
+            backend = agent._e2b_backend
+            if backend is None:
+                continue
+            try:
+                sandbox_id = backend.pause()
+                if sandbox_id:
+                    self._update_sandbox_id(agent_id, sandbox_id)
+                    logger.info(f"Paused E2B sandbox {sandbox_id} for agent {agent_id}")
+            except Exception as e:
+                logger.error(f"Failed to pause sandbox for agent {agent_id}: {e}")
+
     def _reload_agent(self, agent_id: str) -> None:
         """Reload an agent's runtime from DB so config changes take effect."""
         with self._session_factory() as session:

@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 import os
 import sys
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Any
 
 from fastapi import FastAPI, Request
@@ -76,9 +78,21 @@ def get_agent(agent_id: str | None = None) -> OpenInternAgent:
     raise RuntimeError("No agents available")
 
 
+@asynccontextmanager
+async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """FastAPI lifespan: pause all E2B sandboxes on shutdown."""
+    yield
+    # --- Shutdown ---
+    mgr: AgentManager | None = getattr(app.state, "agent_manager", None)
+    if mgr:
+        logger.info("Shutting down: pausing all E2B sandboxes...")
+        mgr.pause_all_sandboxes()
+        logger.info("All E2B sandboxes paused.")
+
+
 def create_app(config: AppConfig) -> FastAPI:
     """Create the FastAPI app with dashboard API, agent CRUD, and webhook endpoints."""
-    app = FastAPI(title="open_intern — multi-agent")
+    app = FastAPI(title="open_intern — multi-agent", lifespan=_lifespan)
 
     # Initialize state containers for platform bots
     app.state.telegram_bots: dict = {}
