@@ -346,7 +346,10 @@ class AgentManager:
             agent_id_val = record.agent_id
         logger.info(f"Updated agent: {agent_id_val}")
         # Reload agent runtime so config changes (API keys, model, etc.) take effect
-        self._reload_agent(agent_id_val)
+        try:
+            self._reload_agent(agent_id_val)
+        except Exception as e:
+            logger.warning(f"Agent {agent_id_val} updated in DB but reload failed: {e}")
         return {"agent_id": agent_id_val, "status": "updated"}
 
     def delete_agent(self, agent_id: str) -> dict:

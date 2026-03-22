@@ -20,6 +20,7 @@ export default function AgentNewChatPage({
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [reloading, setReloading] = useState(false);
+  const [reloadStatus, setReloadStatus] = useState<"" | "ok" | "error">("");
   const scrollRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
 
@@ -78,12 +79,15 @@ export default function AgentNewChatPage({
 
   async function handleReload() {
     setReloading(true);
+    setReloadStatus("");
     try {
       await reloadAgent(agentId);
+      setReloadStatus("ok");
     } catch {
-      // ignore — admin-only, will silently fail for non-admins
+      setReloadStatus("error");
     } finally {
       setReloading(false);
+      setTimeout(() => setReloadStatus(""), 3000);
     }
   }
 
@@ -100,7 +104,7 @@ export default function AgentNewChatPage({
           disabled={reloading}
           title="Reload agent runtime"
         >
-          {reloading ? "Reloading..." : "Reload"}
+          {reloading ? "Reloading..." : reloadStatus === "ok" ? "Reloaded!" : reloadStatus === "error" ? "Failed" : "Reload"}
         </Button>
       </div>
 

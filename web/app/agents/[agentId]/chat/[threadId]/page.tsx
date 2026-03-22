@@ -20,6 +20,7 @@ export default function AgentThreadPage({
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [reloading, setReloading] = useState(false);
+  const [reloadStatus, setReloadStatus] = useState<"" | "ok" | "error">("");
   const [tokenUsage, setTokenUsage] = useState<{
     input_tokens: number;
     output_tokens: number;
@@ -114,13 +115,21 @@ export default function AgentThreadPage({
             size="sm"
             onClick={async () => {
               setReloading(true);
-              try { await reloadAgent(agentId); } catch {}
-              finally { setReloading(false); }
+              setReloadStatus("");
+              try {
+                await reloadAgent(agentId);
+                setReloadStatus("ok");
+              } catch {
+                setReloadStatus("error");
+              } finally {
+                setReloading(false);
+                setTimeout(() => setReloadStatus(""), 3000);
+              }
             }}
             disabled={reloading}
             title="Reload agent runtime"
           >
-            {reloading ? "Reloading..." : "Reload"}
+            {reloading ? "Reloading..." : reloadStatus === "ok" ? "Reloaded!" : reloadStatus === "error" ? "Failed" : "Reload"}
           </Button>
         </div>
         {tokenUsage && tokenUsage.total_tokens > 0 && (
