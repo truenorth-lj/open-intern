@@ -74,9 +74,28 @@ class LarkBot(Integration):
         # Event loop for running async agent code from sync callback
         self._loop: asyncio.AbstractEventLoop | None = None
 
+    async def _fetch_bot_open_id(self) -> None:
+        """Fetch the bot's own open_id to filter self-messages."""
+        try:
+            import lark_oapi.api.bot.v3 as bot_v3
+
+            request = bot_v3.GetBotInfoRequest.builder().build()
+            response = await asyncio.to_thread(self._api_client.bot.v3.bot_info.get, request)
+            if response.success() and response.data and response.data.bot:
+                self._bot_open_id = response.data.bot.open_id or ""
+                logger.info(f"Lark bot open_id: {self._bot_open_id}")
+            else:
+                logger.warning(f"Failed to fetch bot info: {getattr(response, 'msg', 'unknown')}")
+        except Exception:
+            logger.warning(
+                "Could not fetch bot open_id, self-message filtering disabled",
+                exc_info=True,
+            )
+
     async def start(self) -> None:
         """Start the WebSocket connection in a background thread."""
         self._loop = asyncio.get_running_loop()
+        await self._fetch_bot_open_id()
 
         def _run_ws() -> None:
             """Run ws.Client.start() in a fresh event loop.
