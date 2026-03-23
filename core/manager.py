@@ -54,7 +54,9 @@ class AgentManager:
 
     def initialize(self) -> None:
         """Load all active agents from DB. Tables managed by Alembic migrations."""
-        self._check_schema()
+        if not getattr(self, "_schema_checked", False):
+            self._check_schema()
+            self._schema_checked = True
         self._load_agents()
 
     def _check_schema(self) -> None:
