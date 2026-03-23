@@ -354,6 +354,78 @@ export async function deleteAgent(agentId: string) {
   return res.json();
 }
 
+export async function getAgentDetail(agentId: string): Promise<AgentInfo> {
+  const res = await apiFetch(`/agents/${agentId}`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(extractErrorMessage(err, "Failed to fetch agent"));
+  }
+  return res.json();
+}
+
+// --- API Keys ---
+
+export interface ApiKeyInfo {
+  id: string;
+  key_prefix: string;
+  agent_id: string;
+  name: string;
+  created_by: string;
+  is_active: boolean;
+  last_used_at: string | null;
+  created_at: string;
+}
+
+export interface ApiKeyCreateResponse {
+  id: string;
+  key: string;
+  key_prefix: string;
+  agent_id: string;
+  name: string;
+  created_at: string;
+}
+
+export async function createApiKey(
+  agentId: string,
+  name: string = "",
+): Promise<ApiKeyCreateResponse> {
+  const res = await apiFetch(`/auth/agents/${agentId}/api-keys`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(extractErrorMessage(err, "Failed to create API key"));
+  }
+  return res.json();
+}
+
+export async function listApiKeys(
+  agentId: string,
+): Promise<{ api_keys: ApiKeyInfo[] }> {
+  const res = await apiFetch(`/auth/agents/${agentId}/api-keys`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(extractErrorMessage(err, "Failed to fetch API keys"));
+  }
+  return res.json();
+}
+
+export async function revokeApiKey(
+  agentId: string,
+  keyId: string,
+): Promise<{ ok: boolean }> {
+  const res = await apiFetch(`/auth/agents/${agentId}/api-keys/${keyId}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(extractErrorMessage(err, "Failed to revoke API key"));
+  }
+  return res.json();
+}
+
 export async function permanentlyDeleteAgent(agentId: string) {
   const res = await apiFetch(`/agents/${agentId}/permanent`, {
     method: "DELETE",

@@ -129,7 +129,9 @@ def create_app(config: AppConfig) -> FastAPI:
         if request.url.path.startswith("/api/dashboard/auth/"):
             return await call_next(request)
         key = request.headers.get("X-API-Key", "")
-        if key != api_secret:
+        # Allow per-agent API key auth to pass through to endpoint-level auth
+        agent_api_key = request.headers.get("X-Agent-API-Key", "")
+        if key != api_secret and not agent_api_key:
             return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
         return await call_next(request)
 
