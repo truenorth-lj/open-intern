@@ -153,11 +153,10 @@ class TestGetStatus:
         conn = MagicMock()
         mock_engine.connect.return_value.__enter__ = MagicMock(return_value=conn)
         mock_engine.connect.return_value.__exit__ = MagicMock(return_value=False)
-        row = MagicMock()
-        row.input_tokens = 100_000
-        row.output_tokens = 50_000
-        row.cnt = 10
-        conn.execute.return_value.first.return_value = row
+        # Return different mocks for the two separate queries
+        spend_row = MagicMock(input_tokens=100_000, output_tokens=50_000)
+        action_row = MagicMock(cnt=10)
+        conn.execute.return_value.first.side_effect = [spend_row, action_row]
 
         status = guard.get_status()
         assert status["agent_id"] == "test-agent"

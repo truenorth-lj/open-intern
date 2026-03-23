@@ -359,7 +359,8 @@ class MemoryStore:
         # Generate embedding for vector search
         try:
             embedding = self._get_embedding(query)
-            params["embedding"] = str(embedding)
+            # pgvector requires {0.1, 0.2, ...} format (not Python's [0.1, 0.2, ...])
+            params["embedding"] = "{" + ", ".join(map(str, embedding)) + "}"
             has_vector = True
         except Exception as e:
             logger.debug(f"Embedding generation failed, using BM25 only: {e}")

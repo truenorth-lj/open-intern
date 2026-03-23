@@ -518,8 +518,25 @@ class OpenInternAgent:
         """Check if conversation needs compaction and perform it if so."""
         import asyncio
 
-        if not invoke_config.get("configurable", {}).get("thread_id"):
+        thread_id = invoke_config.get("configurable", {}).get("thread_id")
+        if not thread_id:
             return
+
+        # Per-thread lock to prevent concurrent compaction
+        if not hasattr(self, "_compaction_locks"):
+            self._compaction_locks: dict[str, asyncio.Lock] = {}
+        if thread_id not in self._compaction_locks:
+            self._compaction_locks[thread_id] = asyncio.Lock()
+
+        if self._compaction_locks[thread_id].locked():
+            return  # Another compaction in progress for this thread
+
+        async with self._compaction_locks[thread_id]:
+            await self._do_compact(invoke_config)
+
+    async def _do_compact(self, invoke_config: dict) -> None:
+        """Perform the actual compaction (called under lock)."""
+        import asyncio
 
         try:
             state = await asyncio.to_thread(self._agent.get_state, invoke_config)
