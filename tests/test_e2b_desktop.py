@@ -7,13 +7,15 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-# Mock deepagents to avoid import chain issues in test environment
+# ---------------------------------------------------------------------------
+# Mock deepagents to avoid import chain issues in test environment.
+# Must happen before any core.e2b_* imports.
+# ---------------------------------------------------------------------------
 _deepagents_mock = MagicMock()
-# Make the protocol base class a real class so inheritance works
 _deepagents_mock.backends.protocol.SandboxBackendProtocol = type(
     "SandboxBackendProtocol", (), {}
 )
-for mod in [
+for _mod in [
     "deepagents",
     "deepagents.backends",
     "deepagents.backends.protocol",
@@ -22,31 +24,15 @@ for mod in [
     "deepagents.backends.store",
     "deepagents.graph",
 ]:
-    sys.modules.setdefault(mod, _deepagents_mock if mod == "deepagents" else MagicMock())
-# Re-set protocol module so E2BSandboxBackend can import the base class
+    sys.modules.setdefault(_mod, _deepagents_mock if _mod == "deepagents" else MagicMock())
 sys.modules["deepagents.backends.protocol"] = _deepagents_mock.backends.protocol
-
-# Provide the dataclasses that e2b_backend.py imports from protocol
-from dataclasses import dataclass
-
-
-@dataclass
-class _FakeResult:
-    pass
-
-
-for name in [
-    "EditResult",
-    "ExecuteResponse",
-    "FileDownloadResponse",
-    "FileInfo",
-    "FileUploadResponse",
-    "GrepMatch",
-    "WriteResult",
+for _name in [
+    "EditResult", "ExecuteResponse", "FileDownloadResponse",
+    "FileInfo", "FileUploadResponse", "GrepMatch", "WriteResult",
 ]:
-    setattr(_deepagents_mock.backends.protocol, name, type(name, (), {}))
+    setattr(_deepagents_mock.backends.protocol, _name, type(_name, (), {}))
 
-from core.e2b_desktop_backend import E2BDesktopBackend
+from core.e2b_desktop_backend import E2BDesktopBackend  # noqa: E402
 
 
 @pytest.fixture
