@@ -29,6 +29,7 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("key_hash"),
+        sa.ForeignKeyConstraint(["agent_id"], ["agents.agent_id"], ondelete="CASCADE"),
     )
     op.create_index("ix_api_keys_key_hash", "api_keys", ["key_hash"])
     op.create_index("ix_api_keys_agent_id", "api_keys", ["agent_id"])

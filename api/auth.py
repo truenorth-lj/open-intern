@@ -466,4 +466,4 @@ def revoke_api_key(agent_id: str, key_id: str, admin: dict = Depends(require_adm
             raise HTTPException(status_code=404, detail="API key not found")
         record.is_active = False
         session.commit()
-    return {"ok": True, "id": key_id}
+    return {"ok": True, "id": key_id, "is_active": False}
