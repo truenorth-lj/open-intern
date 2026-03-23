@@ -218,6 +218,7 @@ class MemoryStore:
         self.engine = get_engine(database_url)
         self._session_factory = get_session_factory(database_url)
         self.agent_id = agent_id
+        self._embedding_cache: dict[str, list[float]] = {}
 
     def initialize(self) -> None:
         """Verify database connection. Tables managed by Alembic migrations."""
@@ -345,10 +346,14 @@ class MemoryStore:
 
         where_clause = " AND ".join(scope_clauses)
 
-        # Prepare full-text query: split into tsquery terms joined with &
-        ts_terms = " & ".join(f"{term}:*" for term in query.lower().split()[:10] if term.strip())
-        if not ts_terms:
-            ts_terms = query.lower().strip() + ":*"
+        # Prepare full-text query: sanitize terms and join with &
+        import re
+
+        sanitized = [
+            re.sub(r"[^a-z0-9]", "", term) for term in query.lower().split()[:10] if term.strip()
+        ]
+        sanitized = [t for t in sanitized if t]
+        ts_terms = " & ".join(f"{t}:*" for t in sanitized) if sanitized else "a:*"
         params["ts_query"] = ts_terms
 
         # Generate embedding for vector search
@@ -437,15 +442,17 @@ class MemoryStore:
             )
         return entries
 
+    _EMBEDDING_CACHE_MAX = 1000
+
     def _get_embedding(self, text: str) -> list[float]:
         """Generate an embedding vector for text using OpenAI's API.
 
-        Uses a simple cache to avoid redundant API calls.
+        Uses an LRU-style cache to avoid redundant API calls.
         """
         import hashlib
 
         cache_key = hashlib.md5(text.encode()).hexdigest()
-        if hasattr(self, "_embedding_cache") and cache_key in self._embedding_cache:
+        if cache_key in self._embedding_cache:
             return self._embedding_cache[cache_key]
 
         import os
@@ -459,11 +466,13 @@ class MemoryStore:
         )
         embedding = response.data[0].embedding
 
-        if not hasattr(self, "_embedding_cache"):
-            self._embedding_cache: dict[str, list[float]] = {}
-        # Keep cache bounded
-        if len(self._embedding_cache) > 1000:
-            self._embedding_cache.clear()
+        # Evict oldest entries when cache is full (FIFO approximation)
+        if len(self._embedding_cache) >= self._EMBEDDING_CACHE_MAX:
+            # Remove first 10% of entries
+            evict_count = max(1, self._EMBEDDING_CACHE_MAX // 10)
+            keys_to_remove = list(self._embedding_cache.keys())[:evict_count]
+            for k in keys_to_remove:
+                del self._embedding_cache[k]
         self._embedding_cache[cache_key] = embedding
 
         return embedding

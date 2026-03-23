@@ -13,7 +13,10 @@ logger = logging.getLogger(__name__)
 
 
 # Approximate cost per 1M tokens (USD) by provider/model family.
-# Used when exact pricing isn't available. Conservative estimates.
+# Uses the most expensive model in each provider family (conservative).
+# Anthropic: Opus pricing ($15/M output). Sonnet/Haiku are cheaper but
+# we err on the side of caution so budget limits are never exceeded.
+# Override per-agent via config if you need accurate per-model rates.
 MODEL_COST_PER_1M: dict[str, dict[str, float]] = {
     "anthropic": {"input": 3.0, "output": 15.0},
     "claude": {"input": 3.0, "output": 15.0},

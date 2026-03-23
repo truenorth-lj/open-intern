@@ -558,7 +558,13 @@ class OpenInternAgent:
             logger.info(f"Compaction complete: {len(messages)} -> {len(new_messages)} messages")
 
         except Exception as e:
-            logger.warning(f"Context compaction failed (non-fatal): {e}")
+            self._compaction_failures = getattr(self, "_compaction_failures", 0) + 1
+            if self._compaction_failures % 10 == 0:
+                logger.error(
+                    f"Context compaction failing consistently ({self._compaction_failures}x): {e}"
+                )
+            else:
+                logger.warning(f"Context compaction failed (non-fatal): {e}")
 
     def _extract_response(self, result: Any) -> str:
         """Extract the final text response from agent result."""
