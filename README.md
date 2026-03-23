@@ -161,10 +161,7 @@ open_intern/
 │   ├── summarize.py          # Summarization and daily digests
 │   ├── code_review.py        # PR review and bug detection
 │   └── writing.py            # Content drafting
-├── config/
-│   ├── agent.yaml            # Agent identity and personality
-│   ├── permissions.yaml      # Permission rules
-│   └── integrations.yaml     # Active integrations config
+├── config/                      # (reserved for future use)
 ├── cli/
 │   ├── main.py               # CLI entry point
 │   ├── setup.py              # Interactive setup wizard
@@ -244,7 +241,6 @@ When multiple AI employees coexist:
 # Clone and start infrastructure
 git clone https://github.com/user/open_intern.git
 cd open_intern
-cp config/agent.example.yaml config/agent.yaml  # Edit with your agent's name/personality
 docker compose up -d
 
 # Initialize your AI employee
@@ -271,63 +267,7 @@ open_intern costs
 
 ## Configuration Example
 
-```yaml
-# config/agent.yaml
-identity:
-  name: "Rin"
-  role: "AI Employee"
-  personality: |
-    You are Rin, an AI employee at the company. You are helpful, proactive,
-    and detail-oriented. You remember context from previous conversations
-    and take initiative when you see something that needs attention.
-  avatar_url: "https://example.com/rin-avatar.png"
-
-behavior:
-  proactivity:
-    enabled: true
-    heartbeat_interval_minutes: 10
-    max_actions_per_hour: 3
-    confidence_threshold: 0.8
-    quiet_hours: "22:00-08:00"
-  daily_summary:
-    enabled: true
-    time: "17:00"
-    channel: "general"  # channel name in your platform
-
-platform:
-  primary: "lark"       # lark | discord | slack
-  lark:
-    app_id: "cli_xxx"
-    app_secret: "xxx"
-  discord:
-    bot_token: "xxx"
-  # slack:              # uncomment to enable
-  #   bot_token: "xoxb-xxx"
-  #   app_token: "xapp-xxx"
-
-llm:
-  provider: "claude"  # claude | openai | ollama
-  model: "claude-sonnet-4-6"
-  max_tokens_per_action: 4096
-  daily_cost_budget_usd: 10.0
-
-memory:
-  embedding_model: "text-embedding-3-small"
-  max_retrieval_results: 10
-  importance_decay_days: 90
-
-safety:
-  require_approval_for:
-    - send_email
-    - create_pr
-    - post_public_channel
-    - delete_anything
-  auto_allow:
-    - read_channel
-    - respond_to_mention
-    - respond_to_dm
-    - internal_note
-```
+Agent configuration (identity, platform credentials, LLM provider, safety rules) is managed through the **Web Dashboard UI** and stored in PostgreSQL. Environment-level settings (DATABASE_URL, API keys) go in `.env`.
 
 ---
 

@@ -63,7 +63,7 @@ After pushing code, monitor deployment by checking build and runtime logs until 
      - `runtime`: Application crashes or unhandled errors
    - For **build failures**: check Dockerfile, pyproject.toml dependencies
    - For **db issues**: check `docker compose ps postgres`, verify DATABASE_URL
-   - For **config issues**: check config/agent.yaml, .env
+   - For **config issues**: check .env, database agent settings
    - For **runtime errors**: read the error stack trace and fix the code
 
 6. **Fix and redeploy**:

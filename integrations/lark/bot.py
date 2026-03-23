@@ -219,9 +219,11 @@ class LarkBot(Integration):
             if self._loop and self._loop.is_running():
                 future = asyncio.run_coroutine_threadsafe(self.handle_event(chat_event), self._loop)
                 future.add_done_callback(
-                    lambda f: logger.exception("Error in handle_event", exc_info=f.exception())
-                    if f.exception()
-                    else None
+                    lambda f: (
+                        logger.exception("Error in handle_event", exc_info=f.exception())
+                        if f.exception()
+                        else None
+                    )
                 )
             else:
                 logger.warning("Event loop not available, dropping message")
