@@ -125,16 +125,11 @@ class LarkBot(Integration):
                 ReplyMessageRequest.builder()
                 .message_id(thread_id)
                 .request_body(
-                    ReplyMessageRequestBody.builder()
-                    .msg_type("text")
-                    .content(text_content)
-                    .build()
+                    ReplyMessageRequestBody.builder().msg_type("text").content(text_content).build()
                 )
                 .build()
             )
-            response = await asyncio.to_thread(
-                self._api_client.im.v1.message.reply, request
-            )
+            response = await asyncio.to_thread(self._api_client.im.v1.message.reply, request)
         else:
             request = (
                 CreateMessageRequest.builder()
@@ -148,9 +143,7 @@ class LarkBot(Integration):
                 )
                 .build()
             )
-            response = await asyncio.to_thread(
-                self._api_client.im.v1.message.create, request
-            )
+            response = await asyncio.to_thread(self._api_client.im.v1.message.create, request)
 
         if not response.success():
             logger.error(f"Failed to send Lark message: {response.code} - {response.msg}")
