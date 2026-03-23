@@ -264,7 +264,7 @@ async def _setup_platform_bots(
                 logger.error(f"Failed to setup Discord bot for agent {agent_id}: {e}")
 
     elif platform == "lark":
-        from integrations.lark.bot import LarkBot, create_lark_webhook_handler
+        from integrations.lark.bot import LarkBot
 
         lark_agents = manager.get_lark_agents()
         for agent_id, record in lark_agents.items():
@@ -276,16 +276,7 @@ async def _setup_platform_bots(
                 app_secret = decrypt(record.lark_app_secret_encrypted)
                 bot = LarkBot(agent, app_id=app_id, app_secret=app_secret)
                 await bot.start()
-                handler = create_lark_webhook_handler(bot)
-
-                webhook_path = f"/lark/webhook/{agent_id}"
-
-                @app.post(webhook_path)
-                async def lark_webhook(request: Request, _handler=handler):
-                    body = await request.json()
-                    return await _handler(body)
-
-                logger.info(f"Lark webhook registered at {webhook_path} for agent {agent_id}")
+                logger.info(f"Lark bot started (WebSocket) for agent {agent_id}")
             except Exception as e:
                 logger.error(f"Failed to setup Lark bot for agent {agent_id}: {e}")
 
