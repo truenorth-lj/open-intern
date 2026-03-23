@@ -2,6 +2,9 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
+# Ensure Python output is sent straight to the container logs
+ENV PYTHONUNBUFFERED=1
+
 # Install system dependencies + uv
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc libpq-dev && \
