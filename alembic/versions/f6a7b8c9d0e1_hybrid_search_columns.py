@@ -27,15 +27,11 @@ def upgrade() -> None:
 
     # Add GIN index for full-text search
     op.execute(
-        "CREATE INDEX IF NOT EXISTS ix_memories_content_tsv "
-        "ON memories USING GIN (content_tsv)"
+        "CREATE INDEX IF NOT EXISTS ix_memories_content_tsv ON memories USING GIN (content_tsv)"
     )
 
     # Add pgvector embedding column (1536 dimensions for text-embedding-3-small)
-    op.execute(
-        "ALTER TABLE memories ADD COLUMN IF NOT EXISTS "
-        "content_embedding vector(1536)"
-    )
+    op.execute("ALTER TABLE memories ADD COLUMN IF NOT EXISTS content_embedding vector(1536)")
 
     # Add HNSW index for approximate nearest neighbor search
     op.execute(
