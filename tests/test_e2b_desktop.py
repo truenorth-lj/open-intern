@@ -12,9 +12,7 @@ import pytest
 # Must happen before any core.e2b_* imports.
 # ---------------------------------------------------------------------------
 _deepagents_mock = MagicMock()
-_deepagents_mock.backends.protocol.SandboxBackendProtocol = type(
-    "SandboxBackendProtocol", (), {}
-)
+_deepagents_mock.backends.protocol.SandboxBackendProtocol = type("SandboxBackendProtocol", (), {})
 for _mod in [
     "deepagents",
     "deepagents.backends",
@@ -27,8 +25,13 @@ for _mod in [
     sys.modules.setdefault(_mod, _deepagents_mock if _mod == "deepagents" else MagicMock())
 sys.modules["deepagents.backends.protocol"] = _deepagents_mock.backends.protocol
 for _name in [
-    "EditResult", "ExecuteResponse", "FileDownloadResponse",
-    "FileInfo", "FileUploadResponse", "GrepMatch", "WriteResult",
+    "EditResult",
+    "ExecuteResponse",
+    "FileDownloadResponse",
+    "FileInfo",
+    "FileUploadResponse",
+    "GrepMatch",
+    "WriteResult",
 ]:
     setattr(_deepagents_mock.backends.protocol, _name, type(_name, (), {}))
 
@@ -193,9 +196,7 @@ class TestSandboxModeSelection:
 
         result = agent._create_shell_backend()
 
-        mock_cls.assert_called_once_with(
-            agent_id="test", api_key="e2b_test", sandbox_id=None
-        )
+        mock_cls.assert_called_once_with(agent_id="test", api_key="e2b_test", sandbox_id=None)
         assert result is mock_instance
         assert agent._e2b_backend is mock_instance
 
