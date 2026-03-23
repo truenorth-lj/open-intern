@@ -1,7 +1,7 @@
 """Add tsvector and pgvector columns for hybrid search.
 
 Revision ID: f6a7b8c9d0e1
-Revises: e5f6a7b8c9d0
+Revises: d5e6f7a8b9c0
 Create Date: 2026-03-23 17:00:00.000000+00:00
 """
 
@@ -9,7 +9,7 @@ from alembic import op
 
 # revision identifiers
 revision = "f6a7b8c9d0e1"
-down_revision = "e5f6a7b8c9d0"
+down_revision = "d5e6f7a8b9c0"
 branch_labels = None
 depends_on = None
 
