@@ -102,8 +102,8 @@ class AgentRecord(Base):
     max_retrieval_results = Column(Integer, nullable=False, default=10)
     importance_decay_days = Column(Integer, nullable=False, default=90)
 
-    # Sandbox config
-    sandbox_enabled = Column(Boolean, nullable=False, default=True)
+    # Sandbox config: "none" | "base" | "desktop"
+    sandbox_mode = Column(String, nullable=False, default="base")
     e2b_sandbox_id = Column(String, nullable=False, default="")
 
     is_active = Column(Boolean, nullable=False, default=True)

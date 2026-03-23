@@ -138,13 +138,13 @@ class OpenInternAgent:
         self,
         config: AppConfig,
         agent_id: str = "default",
-        sandbox_enabled: bool = True,
+        sandbox_mode: str = "base",
         e2b_sandbox_id: str = "",
         extra_tools: list | None = None,
     ):
         self.config = config
         self.agent_id = agent_id
-        self.sandbox_enabled = sandbox_enabled
+        self.sandbox_mode = sandbox_mode  # "none" | "base" | "desktop"
         self.e2b_sandbox_id = e2b_sandbox_id
         self.extra_tools = extra_tools or []
         self.memory_store = MemoryStore(config.database_url, agent_id=agent_id)
@@ -254,32 +254,45 @@ class OpenInternAgent:
         logger.info(f"Agent '{self.config.identity.name}' initialized")
 
     def _create_shell_backend(self):
-        """Create the shell backend — E2B sandbox or local, based on config."""
-        if self.sandbox_enabled:
+        """Create the shell backend based on sandbox_mode: none | base | desktop."""
+        if self.sandbox_mode in ("base", "desktop"):
             try:
-                from core.e2b_backend import E2BSandboxBackend
-
                 api_key = os.environ.get("E2B_API_KEY", "")
                 if not api_key:
                     logger.warning(
-                        f"E2B sandbox enabled for agent {self.agent_id} "
-                        "but E2B_API_KEY not set. Falling back to local shell."
+                        f"E2B sandbox ({self.sandbox_mode}) enabled for agent "
+                        f"{self.agent_id} but E2B_API_KEY not set. "
+                        "Falling back to local shell."
                     )
+                elif self.sandbox_mode == "desktop":
+                    from core.e2b_desktop_backend import E2BDesktopBackend
+
+                    backend = E2BDesktopBackend(
+                        agent_id=self.agent_id,
+                        api_key=api_key,
+                        sandbox_id=self.e2b_sandbox_id or None,
+                    )
+                    self._e2b_backend = backend
+                    logger.info(f"E2B Desktop sandbox configured (lazy) for agent: {self.agent_id}")
+                    return backend
                 else:
+                    from core.e2b_backend import E2BSandboxBackend
+
                     backend = E2BSandboxBackend(
                         agent_id=self.agent_id,
                         api_key=api_key,
                         sandbox_id=self.e2b_sandbox_id or None,
                     )
-                    # Lazy: don't connect now, _ensure_sandbox() will connect on first use
                     self._e2b_backend = backend
                     logger.info(f"E2B sandbox configured (lazy) for agent: {self.agent_id}")
                     return backend
-            except ImportError:
+            except ImportError as exc:
+                pkg = "e2b-desktop" if self.sandbox_mode == "desktop" else "e2b"
                 logger.warning(
-                    "e2b package not installed. Falling back to local shell. "
-                    "Install with: pip install e2b"
+                    f"{pkg} package not installed. Falling back to local shell. "
+                    f"Install with: pip install {pkg}"
                 )
+                logger.debug("Import error details: %s", exc)
             except Exception as e:
                 logger.error(f"E2B sandbox failed: {e}. Falling back to local shell.")
 

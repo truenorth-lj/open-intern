@@ -40,7 +40,7 @@ const defaultAgentForm = {
   llm_model: "claude-sonnet-4-6",
   llm_temperature: 0.7,
   llm_api_key: "",
-  sandbox_enabled: true,
+  sandbox_mode: "base",
   platform_type: "",
   telegram_token: "",
   discord_token: "",
@@ -100,7 +100,7 @@ export default function AgentsPage() {
       llm_model: agent.llm_model,
       llm_temperature: agent.llm_temperature,
       llm_api_key: "",
-      sandbox_enabled: agent.sandbox_enabled,
+      sandbox_mode: agent.sandbox_mode || "base",
       platform_type: agent.platform_type || "",
       telegram_token: "",
       discord_token: "",
@@ -385,24 +385,25 @@ export default function AgentsPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Sandbox</Label>
-                  <div className="flex items-center gap-2 h-8">
-                    <input
-                      type="checkbox"
-                      id="sandbox"
-                      checked={agentForm.sandbox_enabled}
-                      onChange={(e) =>
-                        setAgentForm((f) => ({
-                          ...f,
-                          sandbox_enabled: e.target.checked,
-                        }))
-                      }
-                      className="size-4 rounded border-input"
-                    />
-                    <Label htmlFor="sandbox" className="font-normal">
-                      Enable E2B sandbox
-                    </Label>
-                  </div>
+                  <Label htmlFor="sandbox-mode">Sandbox</Label>
+                  <select
+                    id="sandbox-mode"
+                    value={agentForm.sandbox_mode}
+                    onChange={(e) =>
+                      setAgentForm((f) => ({
+                        ...f,
+                        sandbox_mode: e.target.value,
+                      }))
+                    }
+                    className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs transition-colors"
+                  >
+                    <option value="none">None (local shell)</option>
+                    <option value="base">Base (CLI sandbox)</option>
+                    <option value="desktop">Desktop (GUI + browser)</option>
+                  </select>
+                  <p className="text-xs text-muted-foreground">
+                    Desktop mode includes a full desktop with Chrome, viewable via live stream.
+                  </p>
                 </div>
               </div>
 
