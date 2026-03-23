@@ -420,9 +420,17 @@ def create_api_key(agent_id: str, body: ApiKeyCreate, admin: dict = Depends(requ
         is_active=True,
         created_at=now,
     )
-    with _get_session() as session:
-        session.add(record)
-        session.commit()
+    try:
+        with _get_session() as session:
+            session.add(record)
+            session.commit()
+    except Exception as e:
+        logger.error("Failed to create API key for agent %s: %s", agent_id, e)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to create API key: {e}. "
+            "Ensure the database migration has been run (alembic upgrade head).",
+        )
     logger.info("API key created for agent %s by %s", agent_id, admin.get("user_id", ""))
 
     return {
@@ -442,13 +450,20 @@ def list_api_keys(agent_id: str, user: dict = Depends(get_current_user)):
     accessible = get_user_accessible_agents(user)
     if accessible is not None and agent_id not in accessible:
         raise HTTPException(status_code=403, detail="Access denied")
-    with _get_session() as session:
-        records = (
-            session.query(ApiKeyRecord)
-            .filter_by(agent_id=agent_id)
-            .order_by(ApiKeyRecord.created_at.desc())
-            .all()
-        )
+    try:
+        session = _get_session()
+    except Exception:
+        return {"api_keys": []}
+    with session:
+        try:
+            records = (
+                session.query(ApiKeyRecord)
+                .filter_by(agent_id=agent_id)
+                .order_by(ApiKeyRecord.created_at.desc())
+                .all()
+            )
+        except Exception:
+            return {"api_keys": []}
         return {
             "api_keys": [
                 {
