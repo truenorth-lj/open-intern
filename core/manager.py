@@ -54,7 +54,34 @@ class AgentManager:
 
     def initialize(self) -> None:
         """Load all active agents from DB. Tables managed by Alembic migrations."""
+        if not getattr(self, "_schema_checked", False):
+            self._check_schema()
+            self._schema_checked = True
         self._load_agents()
+
+    def _check_schema(self) -> None:
+        """Warn if DB columns don't match ORM model (catches missed migrations)."""
+        from sqlalchemy import inspect as sa_inspect
+
+        inspector = sa_inspect(self._engine)
+        if not inspector.has_table("agents"):
+            return
+        db_columns = {col["name"] for col in inspector.get_columns("agents")}
+        orm_columns = {col.name for col in AgentRecord.__table__.columns}
+        missing = orm_columns - db_columns
+        extra = db_columns - orm_columns
+        if missing:
+            logger.error(
+                "DB schema mismatch: agents table missing columns %s. "
+                "Run 'alembic upgrade head' to fix.",
+                missing,
+            )
+        if extra:
+            logger.warning(
+                "DB schema mismatch: agents table has extra columns %s "
+                "not in ORM model (stale columns from old migrations?).",
+                extra,
+            )
 
     def _load_agents(self) -> None:
         """Load and initialize all active agents from DB."""
