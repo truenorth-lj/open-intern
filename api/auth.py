@@ -397,6 +397,14 @@ class ApiKeyCreate(BaseModel):
 @router.post("/agents/{agent_id}/api-keys")
 def create_api_key(agent_id: str, body: ApiKeyCreate, admin: dict = Depends(require_admin)):
     """Create a new API key scoped to a specific agent. Returns the raw key once."""
+    from memory.store import AgentRecord
+
+    # Verify agent exists
+    with _get_session() as session:
+        agent = session.query(AgentRecord).filter_by(agent_id=agent_id).first()
+        if not agent:
+            raise HTTPException(status_code=404, detail=f"Agent '{agent_id}' not found")
+
     raw_key = f"oi_{secrets.token_urlsafe(32)}"
     key_hash = _hash_api_key(raw_key)
     key_prefix = raw_key[:11]  # "oi_" + first 8 chars
@@ -415,6 +423,7 @@ def create_api_key(agent_id: str, body: ApiKeyCreate, admin: dict = Depends(requ
     with _get_session() as session:
         session.add(record)
         session.commit()
+    logger.info("API key created for agent %s by %s", agent_id, admin.get("user_id", ""))
 
     return {
         "id": record.id,
@@ -466,4 +475,5 @@ def revoke_api_key(agent_id: str, key_id: str, admin: dict = Depends(require_adm
             raise HTTPException(status_code=404, detail="API key not found")
         record.is_active = False
         session.commit()
+    logger.info("API key %s revoked for agent %s by %s", key_id, agent_id, admin.get("user_id", ""))
     return {"ok": True, "id": key_id, "is_active": False}

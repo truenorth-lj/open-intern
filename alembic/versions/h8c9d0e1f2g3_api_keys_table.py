@@ -1,16 +1,16 @@
 """Add api_keys table for programmatic agent access.
 
-Revision ID: g7b8c9d0e1f2
-Revises: d5e6f7a8b9c0
-Create Date: 2026-03-24 00:00:00.000000
+Revision ID: h8c9d0e1f2g3
+Revises: g7b8c9d0e1f2
+Create Date: 2026-03-24 02:00:00.000000
 """
 
 import sqlalchemy as sa
 
 from alembic import op
 
-revision = "g7b8c9d0e1f2"
-down_revision = "d5e6f7a8b9c0"
+revision = "h8c9d0e1f2g3"
+down_revision = "g7b8c9d0e1f2"
 branch_labels = None
 depends_on = None
 
