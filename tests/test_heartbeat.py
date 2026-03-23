@@ -74,7 +74,8 @@ class TestHeartbeatRunner:
         agent = MagicMock()
         agent.agent_id = "test-agent"
         agent.is_initialized = True
-        agent.chat = AsyncMock(return_value=("HEARTBEAT_OK", {"input_tokens": 10, "output_tokens": 5, "total_tokens": 15}))
+        usage = {"input_tokens": 10, "output_tokens": 5, "total_tokens": 15}
+        agent.chat = AsyncMock(return_value=("HEARTBEAT_OK", usage))
 
         runner._agents["test-agent"] = agent
         runner._failure_counts["test-agent"] = 0
@@ -103,7 +104,8 @@ class TestHeartbeatRunner:
         agent = MagicMock()
         agent.agent_id = "test-agent"
         agent.is_initialized = True
-        agent.chat = AsyncMock(return_value=("HEARTBEAT_OK", {"input_tokens": 10, "output_tokens": 5, "total_tokens": 15}))
+        usage = {"input_tokens": 10, "output_tokens": 5, "total_tokens": 15}
+        agent.chat = AsyncMock(return_value=("HEARTBEAT_OK", usage))
 
         runner._agents["test-agent"] = agent
         result = await runner.trigger_heartbeat("test-agent")

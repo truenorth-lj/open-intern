@@ -7,7 +7,6 @@ from unittest.mock import MagicMock
 import pytest
 
 from core.compaction import (
-    DEFAULT_KEEP_RECENT,
     DEFAULT_MAX_MESSAGES,
     compact_context,
     count_messages,
