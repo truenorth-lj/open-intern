@@ -12,10 +12,8 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   listAgents,
   createAgent,
-  updateAgent,
   deleteAgent,
   permanentlyDeleteAgent,
-  testTelegramConnection,
   type AgentInfo,
 } from "@/lib/api";
 
@@ -41,11 +39,6 @@ const defaultAgentForm = {
   llm_temperature: 0.7,
   llm_api_key: "",
   sandbox_mode: "base",
-  platform_type: "",
-  telegram_token: "",
-  discord_token: "",
-  lark_app_id: "",
-  lark_app_secret: "",
 };
 
 export default function AgentsPage() {
@@ -56,11 +49,7 @@ export default function AgentsPage() {
   const [agentForm, setAgentForm] = useState(defaultAgentForm);
   const [agentMsg, setAgentMsg] = useState("");
   const [loadError, setLoadError] = useState("");
-  const [editingAgent, setEditingAgent] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
-  const [testChatId, setTestChatId] = useState("");
-  const [testMsg, setTestMsg] = useState("");
-  const [testLoading, setTestLoading] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const isAdmin = user?.role === "admin";
@@ -80,41 +69,26 @@ export default function AgentsPage() {
   }
 
   function handleNewAgent() {
-    setEditingAgent(null);
     setAgentForm(defaultAgentForm);
     setAgentMsg("");
     setShowForm(true);
   }
 
-  function handleEditAgent(agent: AgentInfo) {
-    setEditingAgent(agent.agent_id);
-    setTestChatId("");
-    setTestMsg("");
-    setTestLoading(false);
-    setAgentForm({
-      agent_id: agent.agent_id,
-      name: agent.name,
-      role: agent.role,
-      personality: agent.personality,
-      llm_provider: agent.llm_provider,
-      llm_model: agent.llm_model,
-      llm_temperature: agent.llm_temperature,
-      llm_api_key: "",
-      sandbox_mode: agent.sandbox_mode || "base",
-      platform_type: agent.platform_type || "",
-      telegram_token: "",
-      discord_token: "",
-      lark_app_id: "",
-      lark_app_secret: "",
-    });
-    setAgentMsg("");
-    setShowForm(true);
+  function handleLLMPreset(presetName: string) {
+    const preset = LLM_PRESETS[presetName];
+    if (preset) {
+      setAgentForm((f) => ({
+        ...f,
+        llm_provider: preset.provider,
+        llm_model: preset.model,
+      }));
+    }
   }
 
   async function handleSubmitAgent(e: React.FormEvent) {
     e.preventDefault();
     setAgentMsg("");
-    if (!editingAgent && !agentForm.agent_id.trim()) {
+    if (!agentForm.agent_id.trim()) {
       setAgentMsg("Agent ID is required.");
       return;
     }
@@ -123,30 +97,16 @@ export default function AgentsPage() {
       return;
     }
     try {
-      if (editingAgent) {
-        const { agent_id: _id, llm_api_key, telegram_token, discord_token, lark_app_id, lark_app_secret, platform_type: _pt, ...updates } = agentForm;
-        void _id; void _pt;
-        const payload: Record<string, unknown> = { ...updates };
-        if (llm_api_key) payload.llm_api_key = llm_api_key;
-        if (telegram_token) payload.telegram_token = telegram_token;
-        if (discord_token) payload.discord_token = discord_token;
-        if (lark_app_id) payload.lark_app_id = lark_app_id;
-        if (lark_app_secret) payload.lark_app_secret = lark_app_secret;
-        await updateAgent(editingAgent, payload);
-        setAgentMsg("Agent updated. Restart to apply runtime changes.");
-      } else {
-        const result = await createAgent(agentForm);
-        setAgentMsg(
-          result?.warning
-            ? `Agent created with warning: ${result.warning}`
-            : "Agent created successfully.",
-        );
-      }
+      const result = await createAgent(agentForm);
+      setAgentMsg(
+        result?.warning
+          ? `Agent created with warning: ${result.warning}`
+          : "Agent created successfully.",
+      );
       setShowForm(false);
-      setEditingAgent(null);
       reload();
     } catch (err) {
-      setAgentMsg(err instanceof Error ? err.message : "Failed to save agent");
+      setAgentMsg(err instanceof Error ? err.message : "Failed to create agent");
     }
   }
 
@@ -157,9 +117,7 @@ export default function AgentsPage() {
       setAgentMsg(`Agent '${agentId}' deactivated.`);
       reload();
     } catch (err) {
-      setAgentMsg(
-        err instanceof Error ? err.message : "Failed to delete agent",
-      );
+      setAgentMsg(err instanceof Error ? err.message : "Failed to delete agent");
     }
   }
 
@@ -171,20 +129,7 @@ export default function AgentsPage() {
       setConfirmDeleteId(null);
       reload();
     } catch (err) {
-      setAgentMsg(
-        err instanceof Error ? err.message : "Failed to delete agent",
-      );
-    }
-  }
-
-  function handleLLMPreset(presetName: string) {
-    const preset = LLM_PRESETS[presetName];
-    if (preset) {
-      setAgentForm((f) => ({
-        ...f,
-        llm_provider: preset.provider,
-        llm_model: preset.model,
-      }));
+      setAgentMsg(err instanceof Error ? err.message : "Failed to delete agent");
     }
   }
 
@@ -216,36 +161,29 @@ export default function AgentsPage() {
         <p className="text-sm text-muted-foreground">{agentMsg}</p>
       )}
 
-      {/* Create / Edit form (admin only) */}
+      {/* Create form (admin only) */}
       {showForm && isAdmin && (
         <Card>
           <CardHeader>
-            <CardTitle>
-              {editingAgent ? `Edit Agent: ${editingAgent}` : "New Agent"}
-            </CardTitle>
+            <CardTitle>New Agent</CardTitle>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmitAgent} className="space-y-4">
-              {!editingAgent && (
-                <div className="space-y-2">
-                  <Label htmlFor="agent-id">Agent ID</Label>
-                  <Input
-                    id="agent-id"
-                    placeholder="e.g. rin, helper-bot"
-                    value={agentForm.agent_id}
-                    onChange={(e) =>
-                      setAgentForm((f) => ({
-                        ...f,
-                        agent_id: e.target.value,
-                      }))
-                    }
-                    required
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Unique identifier, cannot be changed later.
-                  </p>
-                </div>
-              )}
+              <div className="space-y-2">
+                <Label htmlFor="agent-id">Agent ID</Label>
+                <Input
+                  id="agent-id"
+                  placeholder="e.g. rin, helper-bot"
+                  value={agentForm.agent_id}
+                  onChange={(e) =>
+                    setAgentForm((f) => ({ ...f, agent_id: e.target.value }))
+                  }
+                  required
+                />
+                <p className="text-xs text-muted-foreground">
+                  Unique identifier, cannot be changed later.
+                </p>
+              </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
@@ -280,10 +218,7 @@ export default function AgentsPage() {
                   placeholder="You are a helpful AI employee..."
                   value={agentForm.personality}
                   onChange={(e) =>
-                    setAgentForm((f) => ({
-                      ...f,
-                      personality: e.target.value,
-                    }))
+                    setAgentForm((f) => ({ ...f, personality: e.target.value }))
                   }
                   rows={3}
                 />
@@ -313,38 +248,6 @@ export default function AgentsPage() {
                     );
                   })}
                 </div>
-                <div className="grid grid-cols-2 gap-4 mt-2">
-                  <div className="space-y-1">
-                    <Label htmlFor="llm-provider" className="text-xs">
-                      Provider
-                    </Label>
-                    <Input
-                      id="llm-provider"
-                      value={agentForm.llm_provider}
-                      onChange={(e) =>
-                        setAgentForm((f) => ({
-                          ...f,
-                          llm_provider: e.target.value,
-                        }))
-                      }
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label htmlFor="llm-model" className="text-xs">
-                      Model
-                    </Label>
-                    <Input
-                      id="llm-model"
-                      value={agentForm.llm_model}
-                      onChange={(e) =>
-                        setAgentForm((f) => ({
-                          ...f,
-                          llm_model: e.target.value,
-                        }))
-                      }
-                    />
-                  </div>
-                </div>
               </div>
 
               <div className="space-y-2">
@@ -352,13 +255,10 @@ export default function AgentsPage() {
                 <Input
                   id="llm-api-key"
                   type="password"
-                  placeholder={editingAgent ? "(leave blank to keep current key)" : "Enter API key..."}
+                  placeholder="Enter API key..."
                   value={agentForm.llm_api_key}
                   onChange={(e) =>
-                    setAgentForm((f) => ({
-                      ...f,
-                      llm_api_key: e.target.value,
-                    }))
+                    setAgentForm((f) => ({ ...f, llm_api_key: e.target.value }))
                   }
                 />
                 <p className="text-xs text-muted-foreground">
@@ -366,237 +266,9 @@ export default function AgentsPage() {
                 </p>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="llm-temp">Temperature</Label>
-                  <Input
-                    id="llm-temp"
-                    type="number"
-                    min={0}
-                    max={2}
-                    step={0.1}
-                    value={agentForm.llm_temperature}
-                    onChange={(e) =>
-                      setAgentForm((f) => ({
-                        ...f,
-                        llm_temperature: parseFloat(e.target.value) || 0,
-                      }))
-                    }
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="sandbox-mode">Sandbox</Label>
-                  <select
-                    id="sandbox-mode"
-                    value={agentForm.sandbox_mode}
-                    onChange={(e) =>
-                      setAgentForm((f) => ({
-                        ...f,
-                        sandbox_mode: e.target.value,
-                      }))
-                    }
-                    className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs transition-colors"
-                  >
-                    <option value="none">None (local shell)</option>
-                    <option value="base">Base (CLI sandbox)</option>
-                    <option value="desktop">Desktop (GUI + browser)</option>
-                  </select>
-                  <p className="text-xs text-muted-foreground">
-                    Desktop mode includes a full desktop with Chrome, viewable via live stream.
-                  </p>
-                </div>
-              </div>
-
-              {/* Platform Connections */}
-              <div className="space-y-4 border-t pt-4">
-                <Label className="text-base font-semibold">Platform Connections</Label>
-                <p className="text-xs text-muted-foreground">
-                  Connect this agent to multiple platforms. Leave credentials blank to skip a platform.
-                </p>
-
-                {/* Telegram */}
-                <details className="rounded-md border" open={
-                  editingAgent
-                    ? agents.find((a) => a.agent_id === editingAgent)?.telegram_token === "***"
-                    : false
-                }>
-                  <summary className="cursor-pointer px-3 py-2 text-sm font-medium flex items-center gap-2">
-                    Telegram
-                    {editingAgent && agents.find((a) => a.agent_id === editingAgent)?.telegram_token === "***" && (
-                      <Badge variant="outline" className="text-xs">Connected</Badge>
-                    )}
-                  </summary>
-                  <div className="px-3 pb-3 space-y-3">
-                    <div className="space-y-2">
-                      <Label htmlFor="telegram-token">Bot Token</Label>
-                      <Input
-                        id="telegram-token"
-                        type="password"
-                        placeholder={editingAgent ? "(leave blank to keep current token)" : "Enter Telegram bot token..."}
-                        value={agentForm.telegram_token}
-                        onChange={(e) =>
-                          setAgentForm((f) => ({
-                            ...f,
-                            telegram_token: e.target.value,
-                          }))
-                        }
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        Get a bot token from{" "}
-                        <a href="https://t.me/BotFather" target="_blank" rel="noopener noreferrer" className="underline">
-                          @BotFather
-                        </a>.
-                      </p>
-                    </div>
-
-                    {editingAgent && agents.find((a) => a.agent_id === editingAgent)?.telegram_token === "***" && (
-                      <div className="space-y-2 rounded-md border p-3 bg-muted/30">
-                        <Label className="text-sm font-medium">Test Connection</Label>
-                        <div className="grid grid-cols-2 gap-2">
-                          <Input
-                            placeholder="Chat ID (e.g. 123456789)"
-                            value={testChatId}
-                            onChange={(e) => setTestChatId(e.target.value)}
-                          />
-                          <Button
-                            type="button"
-                            variant="outline"
-                            disabled={!testChatId.trim() || testLoading}
-                            onClick={async () => {
-                              setTestLoading(true);
-                              setTestMsg("");
-                              try {
-                                const result = await testTelegramConnection(editingAgent, testChatId.trim());
-                                setTestMsg(`Sent via @${result.bot_username}`);
-                              } catch (err) {
-                                setTestMsg(err instanceof Error ? err.message : "Test failed");
-                              } finally {
-                                setTestLoading(false);
-                              }
-                            }}
-                          >
-                            {testLoading ? "Sending..." : "Send Test Message"}
-                          </Button>
-                        </div>
-                        {testMsg && (
-                          <p className={`text-xs ${testMsg.startsWith("Sent") ? "text-green-600" : "text-destructive"}`}>
-                            {testMsg}
-                          </p>
-                        )}
-                        <p className="text-xs text-muted-foreground">
-                          Get your chat ID by messaging{" "}
-                          <a href="https://t.me/userinfobot" target="_blank" rel="noopener noreferrer" className="underline">
-                            @userinfobot
-                          </a>.
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </details>
-
-                {/* Discord */}
-                <details className="rounded-md border" open={
-                  editingAgent
-                    ? agents.find((a) => a.agent_id === editingAgent)?.discord_token === "***"
-                    : false
-                }>
-                  <summary className="cursor-pointer px-3 py-2 text-sm font-medium flex items-center gap-2">
-                    Discord
-                    {editingAgent && agents.find((a) => a.agent_id === editingAgent)?.discord_token === "***" && (
-                      <Badge variant="outline" className="text-xs">Connected</Badge>
-                    )}
-                  </summary>
-                  <div className="px-3 pb-3 space-y-2">
-                    <Label htmlFor="discord-token">Bot Token</Label>
-                    <Input
-                      id="discord-token"
-                      type="password"
-                      placeholder={editingAgent ? "(leave blank to keep current token)" : "Enter Discord bot token..."}
-                      value={agentForm.discord_token}
-                      onChange={(e) =>
-                        setAgentForm((f) => ({
-                          ...f,
-                          discord_token: e.target.value,
-                        }))
-                      }
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Get a bot token from the{" "}
-                      <a href="https://discord.com/developers/applications" target="_blank" rel="noopener noreferrer" className="underline">
-                        Discord Developer Portal
-                      </a>.
-                    </p>
-                  </div>
-                </details>
-
-                {/* Lark */}
-                <details className="rounded-md border" open={
-                  editingAgent
-                    ? agents.find((a) => a.agent_id === editingAgent)?.lark_app_id === "***"
-                    : false
-                }>
-                  <summary className="cursor-pointer px-3 py-2 text-sm font-medium flex items-center gap-2">
-                    Lark
-                    {editingAgent && agents.find((a) => a.agent_id === editingAgent)?.lark_app_id === "***" && (
-                      <Badge variant="outline" className="text-xs">Connected</Badge>
-                    )}
-                  </summary>
-                  <div className="px-3 pb-3 space-y-3">
-                    <div className="space-y-2">
-                      <Label htmlFor="lark-app-id">App ID</Label>
-                      <Input
-                        id="lark-app-id"
-                        type="password"
-                        placeholder={editingAgent ? "(leave blank to keep current)" : "cli_xxxxxxxx"}
-                        value={agentForm.lark_app_id}
-                        onChange={(e) =>
-                          setAgentForm((f) => ({
-                            ...f,
-                            lark_app_id: e.target.value,
-                          }))
-                        }
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="lark-app-secret">App Secret</Label>
-                      <Input
-                        id="lark-app-secret"
-                        type="password"
-                        placeholder={editingAgent ? "(leave blank to keep current)" : "Enter App Secret..."}
-                        value={agentForm.lark_app_secret}
-                        onChange={(e) =>
-                          setAgentForm((f) => ({
-                            ...f,
-                            lark_app_secret: e.target.value,
-                          }))
-                        }
-                      />
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      Get credentials from{" "}
-                      <a href="https://open.larksuite.com" target="_blank" rel="noopener noreferrer" className="underline">
-                        Lark Developer Console
-                      </a>{" "}
-                      → Credentials &amp; Basic Info.
-                    </p>
-                  </div>
-                </details>
-              </div>
-
               <div className="flex gap-2 pt-2">
-                <Button type="submit">
-                  {editingAgent ? "Update Agent" : "Create Agent"}
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  onClick={() => {
-                    setShowForm(false);
-                    setEditingAgent(null);
-                    setTestChatId("");
-                    setTestMsg("");
-                  }}
-                >
+                <Button type="submit">Create Agent</Button>
+                <Button type="button" variant="ghost" onClick={() => setShowForm(false)}>
                   Cancel
                 </Button>
               </div>
@@ -650,29 +322,17 @@ export default function AgentsPage() {
                 <Link href={`/agents/${agent.agent_id}/chat`} className="flex-1">
                   <Button variant="outline" className="w-full">Chat</Button>
                 </Link>
-                <Link href={`/agents/${agent.agent_id}/memories`}>
-                  <Button variant="outline" size="sm">Memories</Button>
-                </Link>
-                <Link href={`/agents/${agent.agent_id}/skills`}>
-                  <Button variant="outline" size="sm">Skills</Button>
+                <Link href={`/agents/${agent.agent_id}/settings`}>
+                  <Button variant="outline" size="sm">Settings</Button>
                 </Link>
                 {isAdmin && (
-                  <>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleEditAgent(agent)}
-                    >
-                      Edit
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleDeleteAgent(agent.agent_id)}
-                    >
-                      Deactivate
-                    </Button>
-                  </>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleDeleteAgent(agent.agent_id)}
+                  >
+                    Deactivate
+                  </Button>
                 )}
               </div>
             </CardContent>
@@ -704,13 +364,9 @@ export default function AgentsPage() {
               </div>
               {isAdmin && (
                 <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleEditAgent(agent)}
-                  >
-                    Edit
-                  </Button>
+                  <Link href={`/agents/${agent.agent_id}/settings`}>
+                    <Button variant="outline" size="sm">Settings</Button>
+                  </Link>
                   {confirmDeleteId === agent.agent_id ? (
                     <>
                       <span className="text-xs text-destructive">Delete permanently?</span>

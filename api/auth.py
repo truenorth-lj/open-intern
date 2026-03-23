@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 from core.config import AppConfig
 from core.database import get_session_factory
 from core.exceptions import ConfigurationError
-from memory.store import UserAgentAccess, UserRecord
+from memory.store import ApiKeyRecord, UserAgentAccess, UserRecord
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/dashboard/auth", tags=["auth"])
@@ -110,8 +110,41 @@ def _decode_jwt(token: str) -> dict | None:
         return None
 
 
+def _hash_api_key(raw_key: str) -> str:
+    """Hash an API key for storage/lookup using SHA-256."""
+    return hashlib.sha256(raw_key.encode()).hexdigest()
+
+
+def _authenticate_api_key(raw_key: str) -> dict | None:
+    """Validate an API key and return a user-like dict, or None."""
+    key_hash = _hash_api_key(raw_key)
+    with _get_session() as session:
+        record = session.query(ApiKeyRecord).filter_by(key_hash=key_hash, is_active=True).first()
+        if not record:
+            return None
+        # Update last_used_at
+        record.last_used_at = datetime.now(timezone.utc)
+        session.commit()
+        return {
+            "user_id": f"apikey:{record.id}",
+            "email": f"apikey:{record.name or record.key_prefix}",
+            "role": "apikey",
+            "agent_id": record.agent_id,
+            "api_key_id": record.id,
+        }
+
+
 def get_current_user(request: Request) -> dict:
-    """Extract and validate user from JWT token in Authorization header or cookie."""
+    """Extract and validate user from JWT token, cookie, or X-API-Key header."""
+    # 1. Check for API key auth
+    api_key = request.headers.get("X-Agent-API-Key", "")
+    if api_key:
+        user = _authenticate_api_key(api_key)
+        if not user:
+            raise HTTPException(status_code=401, detail="Invalid API key")
+        return user
+
+    # 2. Check JWT auth
     token = None
     auth_header = request.headers.get("Authorization", "")
     if auth_header.startswith("Bearer "):
@@ -346,6 +379,101 @@ def get_user_accessible_agents(user: dict) -> list[str] | None:
     """Return list of agent_ids the user can access, or None if admin (all access)."""
     if user.get("role") == "admin":
         return None  # admin sees everything
+    if user.get("role") == "apikey":
+        # API keys are scoped to a single agent
+        return [user["agent_id"]]
     user_id = user.get("user_id", "")
     with _get_session() as session:
         return [a.agent_id for a in session.query(UserAgentAccess).filter_by(user_id=user_id).all()]
+
+
+# --- API Key Management (admin only) ---
+
+
+class ApiKeyCreate(BaseModel):
+    name: str = ""
+
+
+@router.post("/agents/{agent_id}/api-keys")
+def create_api_key(agent_id: str, body: ApiKeyCreate, admin: dict = Depends(require_admin)):
+    """Create a new API key scoped to a specific agent. Returns the raw key once."""
+    from memory.store import AgentRecord
+
+    # Verify agent exists
+    with _get_session() as session:
+        agent = session.query(AgentRecord).filter_by(agent_id=agent_id).first()
+        if not agent:
+            raise HTTPException(status_code=404, detail=f"Agent '{agent_id}' not found")
+
+    raw_key = f"oi_{secrets.token_urlsafe(32)}"
+    key_hash = _hash_api_key(raw_key)
+    key_prefix = raw_key[:11]  # "oi_" + first 8 chars
+    now = datetime.now(timezone.utc)
+
+    record = ApiKeyRecord(
+        id=str(uuid4()),
+        key_prefix=key_prefix,
+        key_hash=key_hash,
+        agent_id=agent_id,
+        name=body.name,
+        created_by=admin.get("user_id", ""),
+        is_active=True,
+        created_at=now,
+    )
+    with _get_session() as session:
+        session.add(record)
+        session.commit()
+    logger.info("API key created for agent %s by %s", agent_id, admin.get("user_id", ""))
+
+    return {
+        "id": record.id,
+        "key": raw_key,  # shown once
+        "key_prefix": key_prefix,
+        "agent_id": agent_id,
+        "name": body.name,
+        "created_at": now.isoformat(),
+    }
+
+
+@router.get("/agents/{agent_id}/api-keys")
+def list_api_keys(agent_id: str, user: dict = Depends(get_current_user)):
+    """List API keys for an agent (key values are never shown)."""
+    # Allow admin or users with access to this agent
+    accessible = get_user_accessible_agents(user)
+    if accessible is not None and agent_id not in accessible:
+        raise HTTPException(status_code=403, detail="Access denied")
+    with _get_session() as session:
+        records = (
+            session.query(ApiKeyRecord)
+            .filter_by(agent_id=agent_id)
+            .order_by(ApiKeyRecord.created_at.desc())
+            .all()
+        )
+        return {
+            "api_keys": [
+                {
+                    "id": r.id,
+                    "key_prefix": r.key_prefix,
+                    "agent_id": r.agent_id,
+                    "name": r.name,
+                    "created_by": r.created_by,
+                    "is_active": r.is_active,
+                    "last_used_at": r.last_used_at.isoformat() if r.last_used_at else None,
+                    "created_at": r.created_at.isoformat() if r.created_at else "",
+                }
+                for r in records
+            ]
+        }
+
+
+@router.delete("/agents/{agent_id}/api-keys/{key_id}")
+def revoke_api_key(agent_id: str, key_id: str, admin: dict = Depends(require_admin)):
+    """Revoke (deactivate) an API key."""
+    with _get_session() as session:
+        record = session.query(ApiKeyRecord).filter_by(id=key_id, agent_id=agent_id).first()
+        if not record:
+            raise HTTPException(status_code=404, detail="API key not found")
+        record.is_active = False
+        session.commit()
+    logger.info("API key %s revoked for agent %s by %s", key_id, agent_id, admin.get("user_id", ""))
+    return {"ok": True, "id": key_id, "is_active": False}

@@ -183,6 +183,22 @@ class TokenUsageRecord(Base):
     __table_args__ = (Index("ix_token_usage_agent_thread", "agent_id", "thread_id"),)
 
 
+class ApiKeyRecord(Base):
+    """API key for programmatic access to a specific agent."""
+
+    __tablename__ = "api_keys"
+
+    id = Column(String, primary_key=True)
+    key_prefix = Column(String, nullable=False)  # first 8 chars, for display
+    key_hash = Column(String, nullable=False, unique=True, index=True)
+    agent_id = Column(String, nullable=False, index=True)
+    name = Column(String, nullable=False, default="")
+    created_by = Column(String, nullable=False, default="")  # user_id who created it
+    is_active = Column(Boolean, nullable=False, default=True)
+    last_used_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False)
+
+
 class UserRecord(Base):
     """Dashboard user account."""
 
