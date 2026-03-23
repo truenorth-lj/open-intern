@@ -11,7 +11,9 @@ from typing import Any
 from langchain.chat_models import init_chat_model
 from langchain_core.tools import tool
 
+from core.compaction import compact_context, needs_compaction
 from core.config import AppConfig
+from core.cost_guard import BudgetExceededError, CostGuard, RateLimitExceededError
 from core.exceptions import AgentNotInitializedError
 from core.identity import build_system_prompt
 from core.types import ChatContext, TokenUsage
@@ -147,6 +149,15 @@ class OpenInternAgent:
         self.extra_tools = extra_tools or []
         self.memory_store = MemoryStore(config.database_url, agent_id=agent_id)
         self.safety = SafetyMiddleware(config)
+        self.cost_guard = CostGuard(
+            database_url=config.database_url,
+            agent_id=agent_id,
+            daily_budget_usd=config.llm.daily_cost_budget_usd,
+            max_actions_per_hour=config.behavior.proactivity.max_actions_per_hour
+            if config.behavior.proactivity.enabled
+            else 0,
+            provider=config.llm.provider,
+        )
         self._agent = None
         self._checkpointer = None
         self._store_ctx = None
@@ -302,6 +313,21 @@ class OpenInternAgent:
 
         context = context or {}
 
+        # Cost guard check
+        try:
+            self.cost_guard.check()
+        except BudgetExceededError:
+            return (
+                "I've reached my daily budget limit. Please try again tomorrow "
+                "or ask an admin to increase the budget.",
+                TokenUsage(input_tokens=0, output_tokens=0, total_tokens=0),
+            )
+        except RateLimitExceededError:
+            return (
+                "I'm receiving too many requests right now. Please try again in a few minutes.",
+                TokenUsage(input_tokens=0, output_tokens=0, total_tokens=0),
+            )
+
         # Safety check
         action_type = "respond_to_dm" if context.get("is_dm") else "respond_to_mention"
         verdict = self.safety.check(
@@ -328,6 +354,10 @@ class OpenInternAgent:
         invoke_config = {}
         if thread_id:
             invoke_config = {"configurable": {"thread_id": thread_id}}
+
+        # Context compaction: check if we need to summarize old messages
+        if thread_id:
+            await self._maybe_compact(invoke_config)
 
         # Invoke the agent in a thread pool (checkpointer doesn't support async)
         import asyncio
@@ -365,6 +395,26 @@ class OpenInternAgent:
 
         context = context or {}
 
+        # Cost guard check
+        try:
+            self.cost_guard.check()
+        except BudgetExceededError:
+            yield {
+                "type": "done",
+                "content": "I've reached my daily budget limit. Please try again tomorrow "
+                "or ask an admin to increase the budget.",
+                "token_usage": {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0},
+            }
+            return
+        except RateLimitExceededError:
+            yield {
+                "type": "done",
+                "content": "I'm receiving too many requests right now. "
+                "Please try again in a few minutes.",
+                "token_usage": {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0},
+            }
+            return
+
         # Safety check (same as chat())
         action_type = "respond_to_dm" if context.get("is_dm") else "respond_to_mention"
         verdict = self.safety.check(
@@ -393,6 +443,10 @@ class OpenInternAgent:
         invoke_config = {}
         if thread_id:
             invoke_config = {"configurable": {"thread_id": thread_id}}
+
+        # Context compaction
+        if thread_id:
+            await self._maybe_compact(invoke_config)
 
         input_data = {"messages": [{"role": "user", "content": enriched_message}]}
         full_text = ""
@@ -459,6 +513,75 @@ class OpenInternAgent:
             "content": full_text,
             "token_usage": dict(token_usage),
         }
+
+    async def _maybe_compact(self, invoke_config: dict) -> None:
+        """Check if conversation needs compaction and perform it if so."""
+        import asyncio
+
+        thread_id = invoke_config.get("configurable", {}).get("thread_id")
+        if not thread_id:
+            return
+
+        # Per-thread lock to prevent concurrent compaction
+        if not hasattr(self, "_compaction_locks"):
+            self._compaction_locks: dict[str, asyncio.Lock] = {}
+        if thread_id not in self._compaction_locks:
+            self._compaction_locks[thread_id] = asyncio.Lock()
+
+        if self._compaction_locks[thread_id].locked():
+            return  # Another compaction in progress for this thread
+
+        async with self._compaction_locks[thread_id]:
+            await self._do_compact(invoke_config)
+
+    async def _do_compact(self, invoke_config: dict) -> None:
+        """Perform the actual compaction (called under lock)."""
+        import asyncio
+
+        try:
+            state = await asyncio.to_thread(self._agent.get_state, invoke_config)
+            if not state or not state.values:
+                return
+
+            messages = state.values.get("messages", [])
+            if not needs_compaction({"messages": messages}):
+                return
+
+            logger.info(
+                f"Compacting conversation ({len(messages)} messages) "
+                f"for thread {invoke_config['configurable']['thread_id']}"
+            )
+
+            llm = _create_llm(self.config)
+            new_messages, summary = await compact_context(llm, messages)
+
+            # Store the summary to memory for long-term recall
+            if summary:
+                self.memory_store.store(
+                    MemoryEntry(
+                        content=f"[Conversation summary]: {summary}",
+                        scope=MemoryScope.SHARED,
+                        source="context_compaction",
+                        importance=0.8,
+                    )
+                )
+
+            # Update the checkpoint with compacted messages
+            await asyncio.to_thread(
+                self._agent.update_state,
+                invoke_config,
+                {"messages": new_messages},
+            )
+            logger.info(f"Compaction complete: {len(messages)} -> {len(new_messages)} messages")
+
+        except Exception as e:
+            self._compaction_failures = getattr(self, "_compaction_failures", 0) + 1
+            if self._compaction_failures % 10 == 0:
+                logger.error(
+                    f"Context compaction failing consistently ({self._compaction_failures}x): {e}"
+                )
+            else:
+                logger.warning(f"Context compaction failed (non-fatal): {e}")
 
     def _extract_response(self, result: Any) -> str:
         """Extract the final text response from agent result."""

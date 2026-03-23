@@ -218,6 +218,7 @@ class MemoryStore:
         self.engine = get_engine(database_url)
         self._session_factory = get_session_factory(database_url)
         self.agent_id = agent_id
+        self._embedding_cache: dict[str, list[float]] = {}
 
     def initialize(self) -> None:
         """Verify database connection. Tables managed by Alembic migrations."""
@@ -277,10 +278,24 @@ class MemoryStore:
         scope_id: str | None = None,
         limit: int = 10,
     ) -> list[MemoryEntry]:
-        """Recall memories matching a query within the given scope.
+        """Recall memories using hybrid search (BM25 full-text + vector + RRF fusion).
 
-        For now, uses simple text search. Phase 2 will add vector/embedding search.
+        Falls back to keyword search if full-text/vector columns are not yet available.
         """
+        try:
+            return self._recall_hybrid(query, scope, scope_id, limit)
+        except Exception as e:
+            logger.debug(f"Hybrid search unavailable, falling back to keyword: {e}")
+            return self._recall_keyword(query, scope, scope_id, limit)
+
+    def _recall_keyword(
+        self,
+        query: str,
+        scope: MemoryScope | None = None,
+        scope_id: str | None = None,
+        limit: int = 10,
+    ) -> list[MemoryEntry]:
+        """Phase 1 keyword fallback: ILIKE matching."""
         with self._session() as session:
             q = session.query(MemoryRecord).filter(MemoryRecord.agent_id == self.agent_id)
 
@@ -289,16 +304,179 @@ class MemoryStore:
             if scope_id is not None:
                 q = q.filter(MemoryRecord.scope_id == scope_id)
 
-            # Simple keyword matching for Phase 1
-            # Phase 2: replace with pgvector similarity search
             search_terms = query.lower().split()
-            for term in search_terms[:5]:  # limit to 5 terms
+            for term in search_terms[:5]:
                 q = q.filter(MemoryRecord.content.ilike(f"%{term}%"))
 
             q = q.order_by(MemoryRecord.importance.desc(), MemoryRecord.created_at.desc())
             q = q.limit(limit)
 
             return [self._record_to_entry(r) for r in q.all()]
+
+    def _recall_hybrid(
+        self,
+        query: str,
+        scope: MemoryScope | None = None,
+        scope_id: str | None = None,
+        limit: int = 10,
+        rrf_k: int = 60,
+    ) -> list[MemoryEntry]:
+        """Hybrid search: BM25 full-text + pgvector cosine similarity + RRF fusion.
+
+        Reciprocal Rank Fusion (RRF) combines rankings from both search methods:
+            RRF_score(d) = 1/(k + rank_bm25(d)) + 1/(k + rank_vector(d))
+
+        Args:
+            query: Search query text.
+            scope: Optional memory scope filter.
+            scope_id: Optional scope ID filter.
+            limit: Max results to return.
+            rrf_k: RRF constant (default 60, higher = more weight to lower-ranked results).
+        """
+        # Build scope filter clause
+        scope_clauses = ["agent_id = :agent_id"]
+        params: dict[str, Any] = {"agent_id": self.agent_id, "limit": limit, "rrf_k": rrf_k}
+
+        if scope is not None:
+            scope_clauses.append("scope = :scope")
+            params["scope"] = scope.value
+        if scope_id is not None:
+            scope_clauses.append("scope_id = :scope_id")
+            params["scope_id"] = scope_id
+
+        where_clause = " AND ".join(scope_clauses)
+
+        # Prepare full-text query: sanitize terms and join with &
+        import re
+
+        sanitized = [
+            re.sub(r"[^a-z0-9]", "", term) for term in query.lower().split()[:10] if term.strip()
+        ]
+        sanitized = [t for t in sanitized if t]
+        ts_terms = " & ".join(f"{t}:*" for t in sanitized) if sanitized else "a:*"
+        params["ts_query"] = ts_terms
+
+        # Generate embedding for vector search
+        try:
+            embedding = self._get_embedding(query)
+            # pgvector requires {0.1, 0.2, ...} format (not Python's [0.1, 0.2, ...])
+            params["embedding"] = "{" + ", ".join(map(str, embedding)) + "}"
+            has_vector = True
+        except Exception as e:
+            logger.debug(f"Embedding generation failed, using BM25 only: {e}")
+            has_vector = False
+
+        if has_vector:
+            # Full hybrid: BM25 + vector with RRF
+            sql = f"""
+            WITH bm25_results AS (
+                SELECT id, content, scope, scope_id, source,
+                       importance, created_at, metadata_json,
+                       ROW_NUMBER() OVER (
+                           ORDER BY ts_rank_cd(content_tsv,
+                           to_tsquery('english', :ts_query)) DESC
+                       ) AS rank
+                FROM memories
+                WHERE {where_clause}
+                  AND content_tsv @@ to_tsquery('english', :ts_query)
+                LIMIT :limit * 3
+            ),
+            vector_results AS (
+                SELECT id, content, scope, scope_id, source,
+                       importance, created_at, metadata_json,
+                       ROW_NUMBER() OVER (
+                           ORDER BY content_embedding <=> :embedding::vector
+                       ) AS rank
+                FROM memories
+                WHERE {where_clause}
+                  AND content_embedding IS NOT NULL
+                LIMIT :limit * 3
+            ),
+            fused AS (
+                SELECT
+                    COALESCE(b.id, v.id) AS id,
+                    COALESCE(b.content, v.content) AS content,
+                    COALESCE(b.scope, v.scope) AS scope,
+                    COALESCE(b.scope_id, v.scope_id) AS scope_id,
+                    COALESCE(b.source, v.source) AS source,
+                    COALESCE(b.importance, v.importance) AS importance,
+                    COALESCE(b.created_at, v.created_at) AS created_at,
+                    COALESCE(b.metadata_json, v.metadata_json)
+                        AS metadata_json,
+                    COALESCE(1.0 / (:rrf_k + b.rank), 0)
+                        + COALESCE(1.0 / (:rrf_k + v.rank), 0)
+                        AS rrf_score
+                FROM bm25_results b
+                FULL OUTER JOIN vector_results v ON b.id = v.id
+            )
+            SELECT * FROM fused
+            ORDER BY rrf_score DESC
+            LIMIT :limit
+            """
+        else:
+            # BM25 only
+            sql = f"""
+            SELECT id, content, scope, scope_id, source, importance, created_at, metadata_json
+            FROM memories
+            WHERE {where_clause}
+              AND content_tsv @@ to_tsquery('english', :ts_query)
+            ORDER BY ts_rank_cd(content_tsv, to_tsquery('english', :ts_query)) DESC
+            LIMIT :limit
+            """
+
+        with self.engine.connect() as conn:
+            rows = conn.execute(sqlalchemy.text(sql), params).fetchall()
+
+        entries = []
+        for row in rows:
+            entries.append(
+                MemoryEntry(
+                    id=row.id,
+                    content=row.content,
+                    scope=MemoryScope(row.scope),
+                    scope_id=row.scope_id,
+                    source=row.source,
+                    importance=row.importance,
+                    created_at=row.created_at,
+                    metadata=json.loads(row.metadata_json) if row.metadata_json else {},
+                )
+            )
+        return entries
+
+    _EMBEDDING_CACHE_MAX = 1000
+
+    def _get_embedding(self, text: str) -> list[float]:
+        """Generate an embedding vector for text using OpenAI's API.
+
+        Uses an LRU-style cache to avoid redundant API calls.
+        """
+        import hashlib
+
+        cache_key = hashlib.md5(text.encode()).hexdigest()
+        if cache_key in self._embedding_cache:
+            return self._embedding_cache[cache_key]
+
+        import os
+
+        import openai
+
+        client = openai.OpenAI(api_key=os.environ.get("OPENAI_API_KEY", ""))
+        response = client.embeddings.create(
+            model="text-embedding-3-small",
+            input=text,
+        )
+        embedding = response.data[0].embedding
+
+        # Evict oldest entries when cache is full (FIFO approximation)
+        if len(self._embedding_cache) >= self._EMBEDDING_CACHE_MAX:
+            # Remove first 10% of entries
+            evict_count = max(1, self._EMBEDDING_CACHE_MAX // 10)
+            keys_to_remove = list(self._embedding_cache.keys())[:evict_count]
+            for k in keys_to_remove:
+                del self._embedding_cache[k]
+        self._embedding_cache[cache_key] = embedding
+
+        return embedding
 
     def get_context_memories(
         self,
