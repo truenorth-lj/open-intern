@@ -235,6 +235,9 @@ export interface AgentInfo {
   llm_temperature: number;
   llm_api_key: string;
   telegram_token: string;
+  discord_token: string;
+  lark_app_id: string;
+  lark_app_secret: string;
   platform_type: string;
   sandbox_enabled: boolean;
   is_active: boolean;

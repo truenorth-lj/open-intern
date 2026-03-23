@@ -30,13 +30,6 @@ const LLM_PRESETS: Record<string, { provider: string; model: string }> = {
   "OpenAI o3": { provider: "openai", model: "o3" },
 };
 
-const PLATFORM_OPTIONS = [
-  { value: "", label: "None (Web only)" },
-  { value: "telegram", label: "Telegram" },
-  { value: "discord", label: "Discord" },
-  { value: "lark", label: "Lark" },
-];
-
 const defaultAgentForm = {
   agent_id: "",
   name: "",
@@ -49,6 +42,9 @@ const defaultAgentForm = {
   sandbox_enabled: true,
   platform_type: "",
   telegram_token: "",
+  discord_token: "",
+  lark_app_id: "",
+  lark_app_secret: "",
 };
 
 export default function AgentsPage() {
@@ -105,6 +101,9 @@ export default function AgentsPage() {
       sandbox_enabled: agent.sandbox_enabled,
       platform_type: agent.platform_type || "",
       telegram_token: "",
+      discord_token: "",
+      lark_app_id: "",
+      lark_app_secret: "",
     });
     setAgentMsg("");
     setShowForm(true);
@@ -123,11 +122,14 @@ export default function AgentsPage() {
     }
     try {
       if (editingAgent) {
-        const { agent_id: _id, llm_api_key, telegram_token, ...updates } = agentForm;
+        const { agent_id: _id, llm_api_key, telegram_token, discord_token, lark_app_id, lark_app_secret, ...updates } = agentForm;
         void _id;
         const payload: Record<string, unknown> = { ...updates };
         if (llm_api_key) payload.llm_api_key = llm_api_key;
         if (telegram_token) payload.telegram_token = telegram_token;
+        if (discord_token) payload.discord_token = discord_token;
+        if (lark_app_id) payload.lark_app_id = lark_app_id;
+        if (lark_app_secret) payload.lark_app_secret = lark_app_secret;
         await updateAgent(editingAgent, payload);
         setAgentMsg("Agent updated. Restart to apply runtime changes.");
       } else {
@@ -384,36 +386,28 @@ export default function AgentsPage() {
                 </div>
               </div>
 
-              {/* Platform Connection */}
-              <div className="space-y-3 border-t pt-4">
-                <Label className="text-base font-semibold">Platform Connection</Label>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="platform-type">Platform</Label>
-                    <select
-                      id="platform-type"
-                      value={agentForm.platform_type}
-                      onChange={(e) =>
-                        setAgentForm((f) => ({
-                          ...f,
-                          platform_type: e.target.value,
-                        }))
-                      }
-                      className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs"
-                    >
-                      {PLATFORM_OPTIONS.map((opt) => (
-                        <option key={opt.value} value={opt.value}>
-                          {opt.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
+              {/* Platform Connections */}
+              <div className="space-y-4 border-t pt-4">
+                <Label className="text-base font-semibold">Platform Connections</Label>
+                <p className="text-xs text-muted-foreground">
+                  Connect this agent to multiple platforms. Leave credentials blank to skip a platform.
+                </p>
 
-                {agentForm.platform_type === "telegram" && (
-                  <div className="space-y-3">
+                {/* Telegram */}
+                <details className="rounded-md border" open={
+                  editingAgent
+                    ? agents.find((a) => a.agent_id === editingAgent)?.telegram_token === "***"
+                    : false
+                }>
+                  <summary className="cursor-pointer px-3 py-2 text-sm font-medium flex items-center gap-2">
+                    Telegram
+                    {editingAgent && agents.find((a) => a.agent_id === editingAgent)?.telegram_token === "***" && (
+                      <Badge variant="outline" className="text-xs">Connected</Badge>
+                    )}
+                  </summary>
+                  <div className="px-3 pb-3 space-y-3">
                     <div className="space-y-2">
-                      <Label htmlFor="telegram-token">Telegram Bot Token</Label>
+                      <Label htmlFor="telegram-token">Bot Token</Label>
                       <Input
                         id="telegram-token"
                         type="password"
@@ -428,22 +422,12 @@ export default function AgentsPage() {
                       />
                       <p className="text-xs text-muted-foreground">
                         Get a bot token from{" "}
-                        <a
-                          href="https://t.me/BotFather"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="underline"
-                        >
+                        <a href="https://t.me/BotFather" target="_blank" rel="noopener noreferrer" className="underline">
                           @BotFather
-                        </a>
-                        .{" "}
-                        {editingAgent && (agents.find((a) => a.agent_id === editingAgent)?.telegram_token === "***"
-                          ? "Token is configured."
-                          : "No token configured yet.")}
+                        </a>.
                       </p>
                     </div>
 
-                    {/* Test Telegram Connection */}
                     {editingAgent && agents.find((a) => a.agent_id === editingAgent)?.telegram_token === "***" && (
                       <div className="space-y-2 rounded-md border p-3 bg-muted/30">
                         <Label className="text-sm font-medium">Test Connection</Label>
@@ -479,16 +463,103 @@ export default function AgentsPage() {
                           </p>
                         )}
                         <p className="text-xs text-muted-foreground">
-                          Enter your Telegram chat ID and click to send a test message. You can get your chat ID by messaging{" "}
+                          Get your chat ID by messaging{" "}
                           <a href="https://t.me/userinfobot" target="_blank" rel="noopener noreferrer" className="underline">
                             @userinfobot
-                          </a>{" "}
-                          on Telegram.
+                          </a>.
                         </p>
                       </div>
                     )}
                   </div>
-                )}
+                </details>
+
+                {/* Discord */}
+                <details className="rounded-md border" open={
+                  editingAgent
+                    ? agents.find((a) => a.agent_id === editingAgent)?.discord_token === "***"
+                    : false
+                }>
+                  <summary className="cursor-pointer px-3 py-2 text-sm font-medium flex items-center gap-2">
+                    Discord
+                    {editingAgent && agents.find((a) => a.agent_id === editingAgent)?.discord_token === "***" && (
+                      <Badge variant="outline" className="text-xs">Connected</Badge>
+                    )}
+                  </summary>
+                  <div className="px-3 pb-3 space-y-2">
+                    <Label htmlFor="discord-token">Bot Token</Label>
+                    <Input
+                      id="discord-token"
+                      type="password"
+                      placeholder={editingAgent ? "(leave blank to keep current token)" : "Enter Discord bot token..."}
+                      value={agentForm.discord_token}
+                      onChange={(e) =>
+                        setAgentForm((f) => ({
+                          ...f,
+                          discord_token: e.target.value,
+                        }))
+                      }
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Get a bot token from the{" "}
+                      <a href="https://discord.com/developers/applications" target="_blank" rel="noopener noreferrer" className="underline">
+                        Discord Developer Portal
+                      </a>.
+                    </p>
+                  </div>
+                </details>
+
+                {/* Lark */}
+                <details className="rounded-md border" open={
+                  editingAgent
+                    ? agents.find((a) => a.agent_id === editingAgent)?.lark_app_id === "***"
+                    : false
+                }>
+                  <summary className="cursor-pointer px-3 py-2 text-sm font-medium flex items-center gap-2">
+                    Lark
+                    {editingAgent && agents.find((a) => a.agent_id === editingAgent)?.lark_app_id === "***" && (
+                      <Badge variant="outline" className="text-xs">Connected</Badge>
+                    )}
+                  </summary>
+                  <div className="px-3 pb-3 space-y-3">
+                    <div className="space-y-2">
+                      <Label htmlFor="lark-app-id">App ID</Label>
+                      <Input
+                        id="lark-app-id"
+                        type="password"
+                        placeholder={editingAgent ? "(leave blank to keep current)" : "cli_xxxxxxxx"}
+                        value={agentForm.lark_app_id}
+                        onChange={(e) =>
+                          setAgentForm((f) => ({
+                            ...f,
+                            lark_app_id: e.target.value,
+                          }))
+                        }
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="lark-app-secret">App Secret</Label>
+                      <Input
+                        id="lark-app-secret"
+                        type="password"
+                        placeholder={editingAgent ? "(leave blank to keep current)" : "Enter App Secret..."}
+                        value={agentForm.lark_app_secret}
+                        onChange={(e) =>
+                          setAgentForm((f) => ({
+                            ...f,
+                            lark_app_secret: e.target.value,
+                          }))
+                        }
+                      />
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Get credentials from{" "}
+                      <a href="https://open.larksuite.com" target="_blank" rel="noopener noreferrer" className="underline">
+                        Lark Developer Console
+                      </a>{" "}
+                      → Credentials &amp; Basic Info.
+                    </p>
+                  </div>
+                </details>
               </div>
 
               <div className="flex gap-2 pt-2">
@@ -541,10 +612,14 @@ export default function AgentsPage() {
                 <Badge variant="secondary">
                   {agent.llm_provider}:{agent.llm_model}
                 </Badge>
-                {agent.platform_type && (
-                  <Badge variant="outline">
-                    {agent.platform_type}
-                  </Badge>
+                {agent.telegram_token === "***" && (
+                  <Badge variant="outline">Telegram</Badge>
+                )}
+                {agent.discord_token === "***" && (
+                  <Badge variant="outline">Discord</Badge>
+                )}
+                {agent.lark_app_id === "***" && (
+                  <Badge variant="outline">Lark</Badge>
                 )}
               </div>
               <p className="text-sm text-muted-foreground line-clamp-2 flex-1">
