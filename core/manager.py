@@ -20,7 +20,7 @@ from core.config import (
 from core.crypto import decrypt, encrypt
 from core.database import get_engine, get_session_factory
 from core.exceptions import AgentNotFoundError, DuplicateAgentError
-from memory.store import AgentRecord, SystemSettingRecord
+from memory.store import AgentRecord, SystemSettingRecord, UserAgentAccess
 
 if TYPE_CHECKING:
     from core.scheduler import CronScheduler
@@ -381,6 +381,22 @@ class AgentManager:
             session.commit()
         logger.info(f"Deactivated agent: {agent_id}")
         return {"agent_id": agent_id, "status": "deactivated"}
+
+    def permanently_delete_agent(self, agent_id: str) -> dict:
+        """Permanently delete an agent and its associated data from the DB."""
+        # Stop runtime if running
+        if agent_id in self._agents:
+            del self._agents[agent_id]
+        with self._session_factory() as session:
+            record = session.query(AgentRecord).filter_by(agent_id=agent_id).first()
+            if not record:
+                raise AgentNotFoundError(agent_id)
+            # Remove user access records
+            session.query(UserAgentAccess).filter_by(agent_id=agent_id).delete()
+            session.delete(record)
+            session.commit()
+        logger.info(f"Permanently deleted agent: {agent_id}")
+        return {"agent_id": agent_id, "status": "deleted"}
 
     def _get_platform_agents(self, *encrypted_fields: str) -> dict[str, AgentRecord]:
         """Get active agents that have all specified encrypted fields non-empty."""

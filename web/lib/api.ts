@@ -332,3 +332,14 @@ export async function deleteAgent(agentId: string) {
   }
   return res.json();
 }
+
+export async function permanentlyDeleteAgent(agentId: string) {
+  const res = await apiFetch(`/agents/${agentId}/permanent`, {
+    method: "DELETE",
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to delete agent");
+  }
+  return res.json();
+}

@@ -14,6 +14,7 @@ import {
   createAgent,
   updateAgent,
   deleteAgent,
+  permanentlyDeleteAgent,
   testTelegramConnection,
   type AgentInfo,
 } from "@/lib/api";
@@ -64,6 +65,7 @@ export default function AgentsPage() {
   const [testChatId, setTestChatId] = useState("");
   const [testMsg, setTestMsg] = useState("");
   const [testLoading, setTestLoading] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const isAdmin = user?.role === "admin";
 
@@ -147,6 +149,20 @@ export default function AgentsPage() {
     try {
       await deleteAgent(agentId);
       setAgentMsg(`Agent '${agentId}' deactivated.`);
+      reload();
+    } catch (err) {
+      setAgentMsg(
+        err instanceof Error ? err.message : "Failed to delete agent",
+      );
+    }
+  }
+
+  async function handlePermanentDelete(agentId: string) {
+    setAgentMsg("");
+    try {
+      await permanentlyDeleteAgent(agentId);
+      setAgentMsg(`Agent '${agentId}' permanently deleted.`);
+      setConfirmDeleteId(null);
       reload();
     } catch (err) {
       setAgentMsg(
@@ -607,13 +623,42 @@ export default function AgentsPage() {
                 </Badge>
               </div>
               {isAdmin && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleEditAgent(agent)}
-                >
-                  Edit
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleEditAgent(agent)}
+                  >
+                    Edit
+                  </Button>
+                  {confirmDeleteId === agent.agent_id ? (
+                    <>
+                      <span className="text-xs text-destructive">Delete permanently?</span>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => handlePermanentDelete(agent.agent_id)}
+                      >
+                        Confirm
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setConfirmDeleteId(null)}
+                      >
+                        Cancel
+                      </Button>
+                    </>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setConfirmDeleteId(agent.agent_id)}
+                    >
+                      Delete
+                    </Button>
+                  )}
+                </div>
               )}
             </div>
           ))}
