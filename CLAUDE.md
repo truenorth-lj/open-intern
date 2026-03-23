@@ -12,7 +12,7 @@ open_intern — An open-source AI employee that joins your team as a real teamma
 open_intern/
 ├── core/                  # Agent logic, config, identity, LLM providers
 │   ├── agent.py           # Main OpenInternAgent class (LangGraph + Deep Agents)
-│   ├── config.py          # Pydantic config models + YAML loader
+│   ├── config.py          # Pydantic config models (pydantic-settings)
 │   └── identity.py        # System prompt builder
 ├── memory/
 │   └── store.py           # PostgreSQL + pgvector memory store
@@ -29,8 +29,6 @@ open_intern/
 │   └── main.py            # Typer CLI (init, start, status, logs, chat)
 ├── skills/                # Agent skills (extensible)
 ├── web/                   # Next.js dashboard frontend (port 3000)
-├── config/
-│   └── agent.example.yaml # Example agent configuration
 ├── server.py              # FastAPI app factory + platform runners
 ├── docker-compose.yml     # PostgreSQL (pgvector) + agent
 ├── Dockerfile             # Python 3.12-slim container
@@ -45,7 +43,7 @@ open_intern/
 uv sync --all-extras          # Install all deps + dev deps into .venv
 
 # CLI commands
-open_intern init          # Create config/agent.yaml from example
+open_intern init          # Create .env from .env.example
 open_intern start         # Start agent on configured platform
 open_intern start --web   # Start in web-only mode (dashboard API on port 8000)
 open_intern status        # Show agent config and memory stats
@@ -83,7 +81,7 @@ cd web && npm run lint                 # ESLint
 - **Agent**: LangGraph + Deep Agents + LangChain
 - **LLM Providers**: Anthropic (Claude), OpenAI, MiniMax (M2.7), Ollama
 - **Database**: PostgreSQL 17 + pgvector (via psycopg + SQLAlchemy)
-- **Config**: Pydantic models + YAML files
+- **Config**: Pydantic models + database (via Dashboard UI)
 - **CLI**: Typer + Rich
 
 ### Frontend (web/)
@@ -102,9 +100,8 @@ cd web && npm run lint                 # ESLint
 6. Conversation stored to memory
 
 ### Config System
-- Config loaded from `config/agent.yaml` (or `agent.yaml`, `~/.open_intern/agent.yaml`)
-- All settings are Pydantic models with sensible defaults
-- Platform credentials via YAML config or environment variables
+- Agent config (identity, platform credentials, LLM settings) stored in PostgreSQL, managed via Dashboard UI
+- Environment-level settings (DATABASE_URL, API keys) via `.env` + pydantic-settings
 - LLM API keys: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `MINIMAX_API_KEY`
 
 ### Memory System
@@ -128,10 +125,8 @@ MiniMax uses Anthropic-compatible API with custom base_url. The `_create_llm()` 
 All platform bots extend the pattern in `integrations/base.py`. The `server.py` factory creates the FastAPI app and delegates to platform-specific runners (`run_lark`, `run_discord`, `run_web_only`).
 
 ### Environment Variables
-- `.env` — LLM API keys, platform tokens (not committed)
+- `.env` — LLM API keys, DATABASE_URL, encryption key (not committed)
 - `.env.example` — Template showing required variables
-- `config/agent.yaml` — Agent configuration (not committed)
-- `config/agent.example.yaml` — Example config (committed)
 - **Never ask the user for API key values.** Only tell them which file and variable to set.
 
 ### Docker Services

@@ -7,8 +7,7 @@ build/
 .eggs/
 .venv/
 
-# Config with secrets
-config/agent.yaml
+# Secrets
 .env
 
 # Logs
