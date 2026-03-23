@@ -2,6 +2,15 @@ import type { Skill } from "./types";
 
 const BASE = "/api/dashboard";
 
+function extractErrorMessage(err: Record<string, unknown>, fallback: string): string {
+  const detail = err.detail;
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail) && detail.length > 0) {
+    return detail.map((d: { msg?: string }) => d.msg || "Unknown error").join("; ");
+  }
+  return fallback;
+}
+
 export async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
   const headers = new Headers(init?.headers);
   const res = await fetch(`${BASE}${path}`, { ...init, headers });
@@ -63,7 +72,7 @@ export async function sendMessage(message: string, threadId?: string, agentId?: 
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || "Failed to send message");
+    throw new Error(extractErrorMessage(err, "Failed to send message"));
   }
   return res.json();
 }
@@ -86,7 +95,7 @@ export async function sendMessageStream(
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || "Failed to send message");
+    throw new Error(extractErrorMessage(err, "Failed to send message"));
   }
 
   const reader = res.body?.getReader();
@@ -271,7 +280,7 @@ export async function createAgent(data: {
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || "Failed to create agent");
+    throw new Error(extractErrorMessage(err, "Failed to create agent"));
   }
   return res.json();
 }
@@ -287,7 +296,7 @@ export async function updateAgent(
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || "Failed to update agent");
+    throw new Error(extractErrorMessage(err, "Failed to update agent"));
   }
   return res.json();
 }
@@ -322,7 +331,7 @@ export async function reloadAgent(agentId: string) {
   const res = await apiFetch(`/agents/${agentId}/reload`, { method: "POST" });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || "Failed to reload agent");
+    throw new Error(extractErrorMessage(err, "Failed to reload agent"));
   }
   return res.json();
 }
@@ -331,7 +340,7 @@ export async function deleteAgent(agentId: string) {
   const res = await apiFetch(`/agents/${agentId}`, { method: "DELETE" });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || "Failed to delete agent");
+    throw new Error(extractErrorMessage(err, "Failed to delete agent"));
   }
   return res.json();
 }
@@ -342,7 +351,7 @@ export async function permanentlyDeleteAgent(agentId: string) {
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || "Failed to delete agent");
+    throw new Error(extractErrorMessage(err, "Failed to delete agent"));
   }
   return res.json();
 }

@@ -127,6 +127,9 @@ def create_agent(body: AgentCreate, admin: dict = Depends(require_admin)):
         raise HTTPException(status_code=409, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:
+        logger.error(f"Unexpected error creating agent: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/agents/{agent_id}")

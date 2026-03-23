@@ -320,7 +320,18 @@ class AgentManager:
             session.expunge(record)
 
         # Initialize the agent runtime (record is detached but fully loaded)
-        self._init_agent_from_record(record)
+        # If init fails, the DB record is already saved — return degraded status
+        try:
+            self._init_agent_from_record(record)
+        except Exception as e:
+            logger.error(f"Agent '{agent_id}' saved to DB but runtime init failed: {e}")
+            return {
+                "agent_id": agent_id,
+                "name": name,
+                "status": "created",
+                "warning": f"Agent saved but runtime initialization failed: {e}. "
+                "It will be retried on next server restart.",
+            }
         logger.info(f"Created agent: {agent_id} ({name})")
         return {"agent_id": agent_id, "name": name, "status": "active"}
 
