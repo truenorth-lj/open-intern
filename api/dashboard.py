@@ -165,6 +165,17 @@ def delete_agent(agent_id: str, admin: dict = Depends(require_admin)):
         raise HTTPException(status_code=404, detail=str(e))
 
 
+@router.delete("/agents/{agent_id}/permanent")
+def permanently_delete_agent(agent_id: str, admin: dict = Depends(require_admin)):
+    """Permanently delete an agent and all associated data."""
+    mgr = _get_manager()
+    try:
+        result = mgr.permanently_delete_agent(agent_id)
+        return result
+    except AgentNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
 @router.post("/agents/{agent_id}/reload")
 async def reload_agent(agent_id: str, admin: dict = Depends(require_admin)):
     """Reload an agent's runtime so config changes take effect immediately."""
