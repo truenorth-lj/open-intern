@@ -122,8 +122,8 @@ export default function AgentsPage() {
     }
     try {
       if (editingAgent) {
-        const { agent_id: _id, llm_api_key, telegram_token, discord_token, lark_app_id, lark_app_secret, ...updates } = agentForm;
-        void _id;
+        const { agent_id: _id, llm_api_key, telegram_token, discord_token, lark_app_id, lark_app_secret, platform_type: _pt, ...updates } = agentForm;
+        void _id; void _pt;
         const payload: Record<string, unknown> = { ...updates };
         if (llm_api_key) payload.llm_api_key = llm_api_key;
         if (telegram_token) payload.telegram_token = telegram_token;
