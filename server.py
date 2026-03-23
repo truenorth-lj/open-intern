@@ -15,6 +15,7 @@ from fastapi.responses import JSONResponse
 
 from core.agent import OpenInternAgent
 from core.config import AppConfig, get_config
+from core.heartbeat import HeartbeatRunner
 from core.manager import AgentManager
 from core.scheduler import CronScheduler
 
@@ -326,9 +327,13 @@ async def run_agent(platform: str = "web") -> None:
     app = create_app(config)
     _app = app
 
+    # Create heartbeat runner
+    heartbeat = HeartbeatRunner()
+
     # Store state on app
     app.state.agent_manager = manager
     app.state.cron_scheduler = scheduler
+    app.state.heartbeat_runner = heartbeat
 
     # If no agents in DB, create a default agent
     if not manager.agents:
@@ -343,6 +348,16 @@ async def run_agent(platform: str = "web") -> None:
 
     # Now start the scheduler (loads jobs from DB and begins execution)
     scheduler.initialize(manager)
+
+    # Register agents for heartbeat if proactivity is enabled
+    for agent_id, agent in manager.agents.items():
+        if agent.config.behavior.proactivity.enabled:
+            heartbeat.register_agent(
+                agent,
+                interval_minutes=agent.config.behavior.proactivity.heartbeat_interval_minutes,
+                quiet_hours=agent.config.behavior.proactivity.quiet_hours,
+            )
+    heartbeat.start()
 
     # Run on the configured platform
     if platform == "telegram":

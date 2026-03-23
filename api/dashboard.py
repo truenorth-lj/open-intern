@@ -1131,3 +1131,52 @@ async def trigger_scheduled_job(job_id: str):
     if not triggered:
         raise HTTPException(status_code=404, detail="Job not found")
     return {"ok": True, "status": "triggered"}
+
+
+# --- Cost Guard ---
+
+
+@router.get("/cost-guard/{agent_id}")
+def get_cost_guard_status(agent_id: str, user: dict = Depends(get_current_user)):
+    """Get cost guard status for an agent (daily spend, budget, rate limits)."""
+    accessible = get_user_accessible_agents(user)
+    if accessible is not None and agent_id not in accessible:
+        raise HTTPException(status_code=403, detail="Access denied")
+    try:
+        agent = _get_agent(agent_id)
+    except Exception:
+        raise HTTPException(status_code=404, detail=f"Agent '{agent_id}' not available")
+    return agent.cost_guard.get_status()
+
+
+# --- Heartbeat ---
+
+
+def _get_heartbeat_runner():
+    from server import _get_app
+
+    app = _get_app()
+    runner = getattr(app.state, "heartbeat_runner", None)
+    if runner is None:
+        raise HTTPException(status_code=503, detail="Heartbeat runner not initialized")
+    return runner
+
+
+@router.get("/heartbeat/status")
+def get_heartbeat_status(user: dict = Depends(get_current_user)):
+    """Get heartbeat status for all registered agents."""
+    runner = _get_heartbeat_runner()
+    return {"agents": runner.get_status()}
+
+
+@router.post("/heartbeat/{agent_id}/trigger")
+async def trigger_heartbeat(agent_id: str, user: dict = Depends(get_current_user)):
+    """Manually trigger a heartbeat for an agent."""
+    accessible = get_user_accessible_agents(user)
+    if accessible is not None and agent_id not in accessible:
+        raise HTTPException(status_code=403, detail="Access denied")
+    runner = _get_heartbeat_runner()
+    result = await runner.trigger_heartbeat(agent_id)
+    if "error" in result:
+        raise HTTPException(status_code=404, detail=result["error"])
+    return result
