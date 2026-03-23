@@ -77,7 +77,7 @@ class AgentCreate(BaseModel):
     embedding_model: str = "text-embedding-3-small"
     max_retrieval_results: int = Field(10, ge=1)
     importance_decay_days: int = Field(90, ge=1)
-    sandbox_enabled: bool = True
+    sandbox_mode: str = "base"  # "none" | "base" | "desktop"
 
 
 class AgentUpdate(BaseModel):
@@ -103,7 +103,7 @@ class AgentUpdate(BaseModel):
     embedding_model: str | None = None
     max_retrieval_results: int | None = None
     importance_decay_days: int | None = None
-    sandbox_enabled: bool | None = None
+    sandbox_mode: str | None = None  # "none" | "base" | "desktop"
     is_active: bool | None = None
 
 
@@ -194,6 +194,78 @@ async def reload_agent(agent_id: str, admin: dict = Depends(require_admin)):
         logger.exception("Failed to reload agent %s", agent_id)
         raise HTTPException(status_code=500, detail="Reload failed due to internal error")
     return {"ok": True, "agent_id": agent_id, "status": "reloaded"}
+
+
+@router.post("/agents/{agent_id}/desktop-stream")
+async def start_desktop_stream(agent_id: str, user: dict = Depends(get_current_user)):
+    """Start desktop sandbox streaming and return the noVNC URL."""
+    accessible = get_user_accessible_agents(user)
+    if accessible is not None and agent_id not in accessible:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    mgr = _get_manager()
+    agent = mgr.get(agent_id)
+    if not agent:
+        raise HTTPException(status_code=404, detail=f"Agent '{agent_id}' not found")
+
+    backend = agent._e2b_backend
+    if backend is None:
+        raise HTTPException(status_code=400, detail="Agent has no E2B sandbox configured")
+
+    from core.e2b_desktop_backend import E2BDesktopBackend
+
+    if not isinstance(backend, E2BDesktopBackend):
+        raise HTTPException(
+            status_code=400,
+            detail="Agent sandbox mode is not 'desktop'. Change sandbox_mode to 'desktop' first.",
+        )
+
+    try:
+        url = backend.start_stream()
+        return {"stream_url": url, "agent_id": agent_id}
+    except Exception as e:
+        logger.error(f"Failed to start desktop stream for {agent_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to start stream: {e}")
+
+
+@router.delete("/agents/{agent_id}/desktop-stream")
+async def stop_desktop_stream(agent_id: str, user: dict = Depends(get_current_user)):
+    """Stop desktop sandbox streaming."""
+    accessible = get_user_accessible_agents(user)
+    if accessible is not None and agent_id not in accessible:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    mgr = _get_manager()
+    agent = mgr.get(agent_id)
+    if not agent:
+        raise HTTPException(status_code=404, detail=f"Agent '{agent_id}' not found")
+
+    backend = agent._e2b_backend
+    from core.e2b_desktop_backend import E2BDesktopBackend
+
+    if isinstance(backend, E2BDesktopBackend):
+        backend.stop_stream()
+    return {"ok": True, "agent_id": agent_id}
+
+
+@router.get("/agents/{agent_id}/desktop-stream")
+async def get_desktop_stream(agent_id: str, user: dict = Depends(get_current_user)):
+    """Get current desktop stream URL if active."""
+    accessible = get_user_accessible_agents(user)
+    if accessible is not None and agent_id not in accessible:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    mgr = _get_manager()
+    agent = mgr.get(agent_id)
+    if not agent:
+        raise HTTPException(status_code=404, detail=f"Agent '{agent_id}' not found")
+
+    backend = agent._e2b_backend
+    from core.e2b_desktop_backend import E2BDesktopBackend
+
+    if isinstance(backend, E2BDesktopBackend) and backend.stream_url:
+        return {"stream_url": backend.stream_url, "agent_id": agent_id, "active": True}
+    return {"stream_url": None, "agent_id": agent_id, "active": False}
 
 
 class TelegramTestRequest(BaseModel):

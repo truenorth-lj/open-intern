@@ -257,7 +257,7 @@ export interface AgentInfo {
   lark_app_id: string;
   lark_app_secret: string;
   platform_type: string;
-  sandbox_enabled: boolean;
+  sandbox_mode: string; // "none" | "base" | "desktop"
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -280,7 +280,7 @@ export async function createAgent(data: {
   llm_temperature?: number;
   llm_api_key?: string;
   telegram_token?: string;
-  sandbox_enabled?: boolean;
+  sandbox_mode?: string;
 }) {
   const res = await apiFetch("/agents", {
     method: "POST",

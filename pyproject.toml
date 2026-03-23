@@ -36,7 +36,8 @@ discord = ["discord.py>=2.4.0"]
 slack = ["slack-bolt>=1.21.0"]
 telegram = ["python-telegram-bot>=21.0"]
 e2b = ["e2b>=1.0.0"]
-all = ["open-intern[lark,discord,slack,telegram,e2b]"]
+e2b-desktop = ["e2b-desktop>=1.0.0"]
+all = ["open-intern[lark,discord,slack,telegram,e2b,e2b-desktop]"]
 dev = ["pytest>=8.0", "ruff>=0.8.0", "mypy>=1.13.0"]  # kept for backwards compat
 
 [project.scripts]

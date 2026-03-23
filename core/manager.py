@@ -107,7 +107,7 @@ class AgentManager:
         agent = OpenInternAgent(
             agent_config,
             agent_id=rec.agent_id,
-            sandbox_enabled=rec.sandbox_enabled,
+            sandbox_mode=rec.sandbox_mode,
             e2b_sandbox_id=rec.e2b_sandbox_id,
             extra_tools=extra_tools,
         )
@@ -256,7 +256,7 @@ class AgentManager:
                     "embedding_model": r.embedding_model,
                     "max_retrieval_results": r.max_retrieval_results,
                     "importance_decay_days": r.importance_decay_days,
-                    "sandbox_enabled": r.sandbox_enabled,
+                    "sandbox_mode": r.sandbox_mode,
                     "is_active": r.is_active,
                     "created_at": r.created_at.isoformat() if r.created_at else "",
                     "updated_at": r.updated_at.isoformat() if r.updated_at else "",
@@ -289,8 +289,12 @@ class AgentManager:
         embedding_model: str = "text-embedding-3-small",
         max_retrieval_results: int = 10,
         importance_decay_days: int = 90,
-        sandbox_enabled: bool = True,
+        sandbox_mode: str = "base",
     ) -> dict:
+        if sandbox_mode not in ("none", "base", "desktop"):
+            raise ValueError(
+                f"sandbox_mode must be 'none', 'base', or 'desktop', got: {sandbox_mode!r}"
+            )
         """Create a new agent in DB and initialize it. Secrets are encrypted before storage."""
         # Validate inputs
         if not _AGENT_ID_RE.match(agent_id):
@@ -332,7 +336,7 @@ class AgentManager:
             embedding_model=embedding_model,
             max_retrieval_results=max_retrieval_results,
             importance_decay_days=importance_decay_days,
-            sandbox_enabled=sandbox_enabled,
+            sandbox_mode=sandbox_mode,
             is_active=True,
             created_at=now,
             updated_at=now,
@@ -386,7 +390,7 @@ class AgentManager:
                 "embedding_model",
                 "max_retrieval_results",
                 "importance_decay_days",
-                "sandbox_enabled",
+                "sandbox_mode",
                 "is_active",
             }
             for key, value in kwargs.items():

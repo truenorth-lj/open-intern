@@ -150,7 +150,7 @@ class TestBuildAgentConfig:
             "embedding_model": "text-embedding-3-small",
             "max_retrieval_results": 10,
             "importance_decay_days": 90,
-            "sandbox_enabled": True,
+            "sandbox_mode": "base",
             "e2b_sandbox_id": "",
             "is_active": True,
             "created_at": now,
