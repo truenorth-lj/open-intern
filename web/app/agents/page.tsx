@@ -135,8 +135,12 @@ export default function AgentsPage() {
         await updateAgent(editingAgent, payload);
         setAgentMsg("Agent updated. Restart to apply runtime changes.");
       } else {
-        await createAgent(agentForm);
-        setAgentMsg("Agent created successfully.");
+        const result = await createAgent(agentForm);
+        setAgentMsg(
+          result?.warning
+            ? `Agent created with warning: ${result.warning}`
+            : "Agent created successfully.",
+        );
       }
       setShowForm(false);
       setEditingAgent(null);
