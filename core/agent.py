@@ -259,7 +259,7 @@ class OpenInternAgent:
             try:
                 api_key = os.environ.get("E2B_API_KEY", "")
                 if not api_key:
-                    logger.warning(
+                    logger.error(
                         f"E2B sandbox ({self.sandbox_mode}) enabled for agent "
                         f"{self.agent_id} but E2B_API_KEY not set. "
                         "Falling back to local shell."

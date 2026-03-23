@@ -147,10 +147,12 @@ class E2BDesktopBackend(E2BSandboxBackend):
 
     def pause(self) -> str | None:
         """Stop stream before pausing."""
-        self.stop_stream()
+        if self._sandbox is not None:
+            self.stop_stream()
         return super().pause()
 
     def kill(self) -> None:
         """Stop stream before killing."""
-        self.stop_stream()
+        if self._sandbox is not None:
+            self.stop_stream()
         super().kill()

@@ -264,6 +264,10 @@ class AgentManager:
         importance_decay_days: int = 90,
         sandbox_mode: str = "base",
     ) -> dict:
+        if sandbox_mode not in ("none", "base", "desktop"):
+            raise ValueError(
+                f"sandbox_mode must be 'none', 'base', or 'desktop', got: {sandbox_mode!r}"
+            )
         """Create a new agent in DB and initialize it. Secrets are encrypted before storage."""
         # Validate inputs
         if not _AGENT_ID_RE.match(agent_id):
