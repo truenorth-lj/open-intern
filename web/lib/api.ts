@@ -5,8 +5,17 @@ const BASE = "/api/dashboard";
 function extractErrorMessage(err: Record<string, unknown>, fallback: string): string {
   const detail = err.detail;
   if (typeof detail === "string") return detail;
-  if (Array.isArray(detail) && detail.length > 0) {
-    return detail.map((d: { msg?: string }) => d.msg || "Unknown error").join("; ");
+  if (Array.isArray(detail)) {
+    return (
+      detail
+        .map((d: unknown) => {
+          if (typeof d === "object" && d !== null && "msg" in d) {
+            return (d as { msg: string }).msg || "Unknown error";
+          }
+          return String(d);
+        })
+        .join("; ") || fallback
+    );
   }
   return fallback;
 }
