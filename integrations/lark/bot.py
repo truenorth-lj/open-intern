@@ -6,7 +6,6 @@ import asyncio
 import json
 import logging
 import threading
-from typing import Any
 
 import lark_oapi as lark
 from lark_oapi import ws as lark_ws
@@ -110,7 +109,14 @@ class LarkBot(Integration):
         logger.info("Lark bot started (WebSocket persistent connection)")
 
     async def stop(self) -> None:
-        """Stop the bot."""
+        """Stop the WebSocket connection and clean up."""
+        if hasattr(self._ws_client, "stop"):
+            try:
+                self._ws_client.stop()
+            except Exception:
+                logger.debug("Error stopping ws client", exc_info=True)
+        if self._ws_thread and self._ws_thread.is_alive():
+            self._ws_thread.join(timeout=5)
         logger.info("Lark bot stopped")
 
     async def send_message(
@@ -166,6 +172,8 @@ class LarkBot(Integration):
                 return
 
             chat_type = message.chat_type or ""
+            # Lark field mapping: open_id is the stable user identifier,
+            # user_id is a human-readable ID (not a display name).
             chat_event = ChatEvent(
                 platform="lark",
                 event_type="message",
@@ -184,44 +192,14 @@ class LarkBot(Integration):
 
             # Schedule async handle_event on the main event loop
             if self._loop and self._loop.is_running():
-                asyncio.run_coroutine_threadsafe(self.handle_event(chat_event), self._loop)
+                future = asyncio.run_coroutine_threadsafe(self.handle_event(chat_event), self._loop)
+                future.add_done_callback(
+                    lambda f: logger.exception("Error in handle_event", exc_info=f.exception())
+                    if f.exception()
+                    else None
+                )
             else:
                 logger.warning("Event loop not available, dropping message")
 
         except Exception:
             logger.exception("Error handling Lark message event")
-
-    def parse_event(self, event_body: dict[str, Any]) -> ChatEvent | None:
-        """Parse a raw Lark event dict into a ChatEvent (for testing/compat)."""
-        header = event_body.get("header", {})
-        event = event_body.get("event", {})
-        event_type = header.get("event_type", "")
-
-        if event_type == "im.message.receive_v1":
-            message = event.get("message", {})
-            sender = event.get("sender", {}).get("sender_id", {})
-            chat_type = message.get("chat_type", "")
-
-            content_str = message.get("content", "{}")
-            try:
-                content_data = json.loads(content_str)
-                text = content_data.get("text", "")
-            except (json.JSONDecodeError, TypeError):
-                text = content_str
-
-            if not text:
-                return None
-
-            return ChatEvent(
-                platform="lark",
-                event_type="message",
-                channel_id=message.get("chat_id", ""),
-                user_id=sender.get("open_id", ""),
-                user_name=sender.get("user_id", "unknown"),
-                content=text,
-                is_dm=(chat_type == "p2p"),
-                thread_id=message.get("root_id") or message.get("message_id"),
-                raw=event_body,
-            )
-
-        return None
