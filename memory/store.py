@@ -201,6 +201,7 @@ class ApiKeyRecord(Base):
     name = Column(String, nullable=False, default="")
     created_by = Column(String, nullable=False, default="")  # user_id who created it
     is_active = Column(Boolean, nullable=False, default=True)
+    expires_at = Column(DateTime(timezone=True), nullable=True)  # None = never expires
     last_used_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False)
 

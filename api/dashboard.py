@@ -138,8 +138,8 @@ async def create_agent(body: AgentCreate, admin: dict = Depends(require_admin)):
     except (KeyboardInterrupt, SystemExit):
         raise
     except Exception as e:
-        logger.error(f"Unexpected error creating agent: {e}")
-        raise HTTPException(status_code=500, detail=str(e)) from e
+        logger.error(f"Unexpected error creating agent: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error") from e
 
 
 @router.get("/agents/{agent_id}")
