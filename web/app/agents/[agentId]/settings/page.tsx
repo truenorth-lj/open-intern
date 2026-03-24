@@ -236,23 +236,24 @@ export default function AgentSettingsPage({
         </Card>
       ) : (
         /* Admin: tabbed settings */
-        <Tabs defaultValue={0}>
+        <Tabs defaultValue="general">
           <TabsList>
-            <TabsTrigger value={0}>General</TabsTrigger>
-            <TabsTrigger value={1}>Model</TabsTrigger>
-            <TabsTrigger value={2}>Platforms</TabsTrigger>
-            <TabsTrigger value={3}>API Keys</TabsTrigger>
-            {showDesktop && <TabsTrigger value={4}>Desktop</TabsTrigger>}
+            <TabsTrigger value="general">General</TabsTrigger>
+            <TabsTrigger value="model">Model</TabsTrigger>
+            <TabsTrigger value="platforms">Platforms</TabsTrigger>
+            <TabsTrigger value="api-keys">API Keys</TabsTrigger>
+            {showDesktop && <TabsTrigger value="desktop">Desktop</TabsTrigger>}
           </TabsList>
 
+          <form onSubmit={handleSave}>
+
           {/* ── General Tab ── */}
-          <TabsContent value={0}>
+          <TabsContent value="general">
             <Card>
               <CardHeader>
                 <CardTitle>General</CardTitle>
               </CardHeader>
-              <CardContent>
-                <form onSubmit={handleSave} className="space-y-4">
+              <CardContent className="space-y-4">
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="agent-name">Name</Label>
@@ -284,19 +285,17 @@ export default function AgentSettingsPage({
                   </div>
 
                   <Button type="submit">Save Changes</Button>
-                </form>
               </CardContent>
             </Card>
           </TabsContent>
 
           {/* ── Model Tab ── */}
-          <TabsContent value={1}>
+          <TabsContent value="model">
             <Card>
               <CardHeader>
                 <CardTitle>LLM Model</CardTitle>
               </CardHeader>
-              <CardContent>
-                <form onSubmit={handleSave} className="space-y-4">
+              <CardContent className="space-y-4">
                   <div className="space-y-2">
                     <Label>Quick Select</Label>
                     <div className="flex flex-wrap gap-2">
@@ -386,13 +385,12 @@ export default function AgentSettingsPage({
                   </div>
 
                   <Button type="submit">Save Changes</Button>
-                </form>
               </CardContent>
             </Card>
           </TabsContent>
 
           {/* ── Platforms Tab ── */}
-          <TabsContent value={2}>
+          <TabsContent value="platforms">
             <Card>
               <CardHeader>
                 <CardTitle>Platform Connections</CardTitle>
@@ -400,8 +398,7 @@ export default function AgentSettingsPage({
                   Connect this agent to multiple platforms. Leave credentials blank to skip.
                 </p>
               </CardHeader>
-              <CardContent>
-                <form onSubmit={handleSave} className="space-y-4">
+              <CardContent className="space-y-4">
                   {/* Telegram */}
                   <details className="rounded-md border" open={agent.telegram_token === "***"}>
                     <summary className="cursor-pointer px-3 py-2 text-sm font-medium flex items-center gap-2">
@@ -513,13 +510,12 @@ export default function AgentSettingsPage({
                   </details>
 
                   <Button type="submit">Save Changes</Button>
-                </form>
               </CardContent>
             </Card>
           </TabsContent>
 
           {/* ── API Keys Tab ── */}
-          <TabsContent value={3}>
+          <TabsContent value="api-keys">
             <Card>
               <CardHeader>
                 <CardTitle>API Keys</CardTitle>
@@ -608,9 +604,11 @@ export default function AgentSettingsPage({
             </Card>
           </TabsContent>
 
+          </form>
+
           {/* ── Desktop Tab (conditional) ── */}
           {showDesktop && (
-            <TabsContent value={4}>
+            <TabsContent value="desktop">
               <Card>
                 <CardHeader>
                   <CardTitle>Desktop Stream</CardTitle>
