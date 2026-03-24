@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 from datetime import datetime, timezone
 from enum import Enum
 from logging.handlers import RotatingFileHandler
@@ -71,6 +72,7 @@ class SafetyMiddleware:
     def __init__(self, config: AppConfig):
         self.config = config
         self.audit_log: list[AuditEntry] = []
+        self._audit_lock = threading.Lock()
         self._audit_file = Path("logs/audit.jsonl")
         self._audit_logger = _create_audit_logger(self._audit_file)
 
@@ -122,7 +124,8 @@ class SafetyMiddleware:
 
     def _log(self, entry: AuditEntry) -> None:
         """Append to in-memory log and audit file (via rotating handler)."""
-        self.audit_log.append(entry)
+        with self._audit_lock:
+            self.audit_log.append(entry)
         try:
             self._audit_logger.info(entry.model_dump_json())
         except OSError:
@@ -131,4 +134,5 @@ class SafetyMiddleware:
 
     def get_recent_audit(self, limit: int = 20) -> list[AuditEntry]:
         """Get recent audit entries."""
-        return self.audit_log[-limit:]
+        with self._audit_lock:
+            return self.audit_log[-limit:]
