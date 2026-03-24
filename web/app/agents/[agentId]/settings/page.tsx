@@ -119,8 +119,7 @@ export default function AgentSettingsPage({
     }
   }
 
-  async function handleSave(e: React.FormEvent) {
-    e.preventDefault();
+  async function handleSave() {
     setMsg("");
     const { llm_api_key, telegram_token, discord_token, lark_app_id, lark_app_secret, ...rest } = form;
     const payload: Record<string, unknown> = { ...rest };
@@ -241,11 +240,8 @@ export default function AgentSettingsPage({
             <TabsTrigger value="general">General</TabsTrigger>
             <TabsTrigger value="model">Model</TabsTrigger>
             <TabsTrigger value="platforms">Platforms</TabsTrigger>
-            <TabsTrigger value="api-keys">API Keys</TabsTrigger>
             {showDesktop && <TabsTrigger value="desktop">Desktop</TabsTrigger>}
           </TabsList>
-
-          <form onSubmit={handleSave}>
 
           {/* ── General Tab ── */}
           <TabsContent value="general">
@@ -280,11 +276,11 @@ export default function AgentSettingsPage({
                       id="agent-personality"
                       value={form.personality}
                       onChange={(e) => setForm((f) => ({ ...f, personality: e.target.value }))}
-                      rows={5}
+                      rows={3}
                     />
                   </div>
 
-                  <Button type="submit">Save Changes</Button>
+                  <Button type="button" onClick={handleSave}>Save Changes</Button>
               </CardContent>
             </Card>
           </TabsContent>
@@ -384,7 +380,7 @@ export default function AgentSettingsPage({
                     </div>
                   </div>
 
-                  <Button type="submit">Save Changes</Button>
+                  <Button type="button" onClick={handleSave}>Save Changes</Button>
               </CardContent>
             </Card>
           </TabsContent>
@@ -509,102 +505,10 @@ export default function AgentSettingsPage({
                     </div>
                   </details>
 
-                  <Button type="submit">Save Changes</Button>
+                  <Button type="button" onClick={handleSave}>Save Changes</Button>
               </CardContent>
             </Card>
           </TabsContent>
-
-          {/* ── API Keys Tab ── */}
-          <TabsContent value="api-keys">
-            <Card>
-              <CardHeader>
-                <CardTitle>API Keys</CardTitle>
-                <p className="text-sm text-muted-foreground">
-                  Use API keys to access this agent programmatically. Send requests with the{" "}
-                  <code className="text-xs bg-muted px-1 py-0.5 rounded">X-Agent-API-Key</code> header.
-                </p>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex gap-2">
-                  <Input
-                    placeholder="Key name (optional)"
-                    value={apiKeyName}
-                    onChange={(e) => setApiKeyName(e.target.value)}
-                    className="max-w-xs"
-                  />
-                  <Button type="button" variant="outline" onClick={handleCreateApiKey}>
-                    Create API Key
-                  </Button>
-                </div>
-
-                {newApiKey && (
-                  <div className="rounded-md border border-green-500/50 bg-green-500/10 p-3 space-y-2">
-                    <p className="text-sm font-medium text-green-700 dark:text-green-400">
-                      API key created. Copy it now — it won&apos;t be shown again.
-                    </p>
-                    <code className="block text-xs bg-muted p-2 rounded break-all select-all">
-                      {newApiKey}
-                    </code>
-                  </div>
-                )}
-
-                {apiKeyMsg && <p className="text-sm text-destructive">{apiKeyMsg}</p>}
-
-                {apiKeys.length > 0 ? (
-                  <div className="space-y-2">
-                    {apiKeys.map((k) => (
-                      <div
-                        key={k.id}
-                        className={`flex items-center justify-between rounded-md border p-3 ${
-                          !k.is_active ? "opacity-50" : ""
-                        }`}
-                      >
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            <code className="text-sm">{k.key_prefix}...</code>
-                            {k.name && <span className="text-sm text-muted-foreground">{k.name}</span>}
-                            <Badge variant={k.is_active ? "outline" : "destructive"} className="text-xs">
-                              {k.is_active ? "Active" : "Revoked"}
-                            </Badge>
-                          </div>
-                          <p className="text-xs text-muted-foreground">
-                            Created {k.created_at ? new Date(k.created_at).toLocaleDateString() : "—"}
-                            {k.last_used_at && ` · Last used ${new Date(k.last_used_at).toLocaleDateString()}`}
-                          </p>
-                        </div>
-                        {k.is_active && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleRevokeApiKey(k.id)}
-                          >
-                            Revoke
-                          </Button>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-sm text-muted-foreground">No API keys yet.</p>
-                )}
-
-                {/* Usage example */}
-                <details className="rounded-md border">
-                  <summary className="cursor-pointer px-3 py-2 text-sm font-medium">
-                    Usage Example
-                  </summary>
-                  <div className="px-3 pb-3">
-                    <pre className="text-xs bg-muted p-3 rounded overflow-x-auto">{`curl -X POST ${typeof window !== "undefined" ? window.location.origin : "http://localhost:8000"}/api/dashboard/chat \\
-  -H "X-Agent-API-Key: oi_your_key_here" \\
-  -H "Content-Type: application/json" \\
-  -d '{"message": "Hello", "agent_id": "${agentId}"}'`}</pre>
-                  </div>
-                </details>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          </form>
 
           {/* ── Desktop Tab (conditional) ── */}
           {showDesktop && (
@@ -667,6 +571,96 @@ export default function AgentSettingsPage({
           )}
         </Tabs>
       )}
+
+      {/* API Keys — visible to all users */}
+      <Card>
+        <CardHeader>
+          <CardTitle>API Keys</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Use API keys to access this agent programmatically. Send requests with the{" "}
+            <code className="text-xs bg-muted px-1 py-0.5 rounded">X-Agent-API-Key</code> header.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {isAdmin && (
+            <div className="flex gap-2">
+              <Input
+                placeholder="Key name (optional)"
+                value={apiKeyName}
+                onChange={(e) => setApiKeyName(e.target.value)}
+                className="max-w-xs"
+              />
+              <Button type="button" variant="outline" onClick={handleCreateApiKey}>
+                Create API Key
+              </Button>
+            </div>
+          )}
+
+          {newApiKey && (
+            <div className="rounded-md border border-green-500/50 bg-green-500/10 p-3 space-y-2">
+              <p className="text-sm font-medium text-green-700 dark:text-green-400">
+                API key created. Copy it now — it won&apos;t be shown again.
+              </p>
+              <code className="block text-xs bg-muted p-2 rounded break-all select-all">
+                {newApiKey}
+              </code>
+            </div>
+          )}
+
+          {apiKeyMsg && <p className="text-sm text-destructive">{apiKeyMsg}</p>}
+
+          {apiKeys.length > 0 ? (
+            <div className="space-y-2">
+              {apiKeys.map((k) => (
+                <div
+                  key={k.id}
+                  className={`flex items-center justify-between rounded-md border p-3 ${
+                    !k.is_active ? "opacity-50" : ""
+                  }`}
+                >
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <code className="text-sm">{k.key_prefix}...</code>
+                      {k.name && <span className="text-sm text-muted-foreground">{k.name}</span>}
+                      <Badge variant={k.is_active ? "outline" : "destructive"} className="text-xs">
+                        {k.is_active ? "Active" : "Revoked"}
+                      </Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Created {k.created_at ? new Date(k.created_at).toLocaleDateString() : "—"}
+                      {k.last_used_at && ` · Last used ${new Date(k.last_used_at).toLocaleDateString()}`}
+                    </p>
+                  </div>
+                  {k.is_active && isAdmin && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleRevokeApiKey(k.id)}
+                    >
+                      Revoke
+                    </Button>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">No API keys yet.</p>
+          )}
+
+          {/* Usage example */}
+          <details className="rounded-md border">
+            <summary className="cursor-pointer px-3 py-2 text-sm font-medium">
+              Usage Example
+            </summary>
+            <div className="px-3 pb-3">
+              <pre className="text-xs bg-muted p-3 rounded overflow-x-auto">{`curl -X POST ${typeof window !== "undefined" ? window.location.origin : "http://localhost:8000"}/api/dashboard/chat \\
+  -H "X-Agent-API-Key: oi_your_key_here" \\
+  -H "Content-Type: application/json" \\
+  -d '{"message": "Hello", "agent_id": "${agentId}"}'`}</pre>
+            </div>
+          </details>
+        </CardContent>
+      </Card>
 
       {/* Navigation */}
       <div className="flex gap-2">
