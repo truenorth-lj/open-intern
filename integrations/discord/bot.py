@@ -6,6 +6,7 @@ import logging
 
 from core.agent import OpenInternAgent
 from integrations.base import ChatEvent, Integration
+from integrations.utils import chunk_message
 
 logger = logging.getLogger(__name__)
 
@@ -97,13 +98,8 @@ class DiscordBot(Integration):
             logger.error(f"Channel {channel_id} not found")
             return
 
-        # Split long messages (Discord has 2000 char limit)
-        if len(content) <= 2000:
-            await channel.send(content)
-        else:
-            chunks = [content[i : i + 1990] for i in range(0, len(content), 1990)]
-            for chunk in chunks:
-                await channel.send(chunk)
+        for chunk in chunk_message(content, max_size=2000):
+            await channel.send(chunk)
 
     def _is_self(self, event: ChatEvent) -> bool:
         return event.user_id == self._bot_id

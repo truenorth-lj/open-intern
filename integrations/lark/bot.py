@@ -28,6 +28,7 @@ LARK_DOMAIN = lark.LARK_DOMAIN
 FEISHU_DOMAIN = lark.FEISHU_DOMAIN
 
 _USER_NAME_CACHE_TTL = 3600  # 1 hour
+_USER_NAME_CACHE_MAX = 5000  # Max entries to prevent unbounded growth
 
 
 class LarkBot(Integration):
@@ -103,7 +104,7 @@ class LarkBot(Integration):
         if cached and (now - cached[1]) < _USER_NAME_CACHE_TTL:
             return cached[0]
         # Evict expired entries when cache grows large
-        if len(self._user_name_cache) > 1000:
+        if len(self._user_name_cache) > _USER_NAME_CACHE_MAX:
             self._user_name_cache = {
                 k: v
                 for k, v in self._user_name_cache.items()

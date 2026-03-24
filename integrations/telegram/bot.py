@@ -8,6 +8,7 @@ from uuid import uuid4
 
 from core.agent import OpenInternAgent
 from integrations.base import ChatEvent, Integration
+from integrations.utils import chunk_message
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +18,7 @@ class TelegramBot(Integration):
 
     # Minimum seconds between message edits to avoid Telegram API rate limits
     EDIT_INTERVAL_SECONDS = 1.5
+    _MAX_THREADS = 10_000  # Prevent unbounded memory growth
 
     def __init__(self, agent: OpenInternAgent, token: str, agent_id: str):
         super().__init__(agent)
@@ -28,12 +30,16 @@ class TelegramBot(Integration):
         self._bot_id: str = ""
         self._bot_username: str = ""
         self.webhook_secret: str = ""
-        # Thread management: chat_id -> current thread_id
+        # Thread management: chat_id -> current thread_id (bounded)
         self._threads: dict[int, str] = {}
 
     def _get_thread_id(self, chat_id: int) -> str:
         """Get current thread_id for a chat, creating one if needed."""
         if chat_id not in self._threads:
+            # Evict oldest entries when at capacity
+            if len(self._threads) >= self._MAX_THREADS:
+                oldest_key = next(iter(self._threads))
+                del self._threads[oldest_key]
             self._threads[chat_id] = f"tg-{self.agent_id}-{chat_id}-{uuid4().hex[:8]}"
         return self._threads[chat_id]
 
@@ -218,13 +224,8 @@ class TelegramBot(Integration):
             logger.error("Telegram bot not started")
             return
 
-        # Telegram has 4096 char limit
-        if len(content) <= 4096:
-            await self._app.bot.send_message(chat_id=int(channel_id), text=content)
-        else:
-            chunks = [content[i : i + 4000] for i in range(0, len(content), 4000)]
-            for chunk in chunks:
-                await self._app.bot.send_message(chat_id=int(channel_id), text=chunk)
+        for chunk in chunk_message(content, max_size=4096):
+            await self._app.bot.send_message(chat_id=int(channel_id), text=chunk)
 
     def _is_self(self, event: ChatEvent) -> bool:
         return event.user_id == self._bot_id
