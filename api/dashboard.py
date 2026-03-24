@@ -213,11 +213,27 @@ async def pause_sandbox(agent_id: str, user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=400, detail="Agent has no E2B sandbox")
 
     try:
+        # Backup to R2 before pausing (best-effort)
+        from core.r2_storage import R2Storage
+
+        r2 = R2Storage(_config)
+        backup_key = None
+        if r2.enabled:
+            backup_key = backend.backup_to_r2(r2)
+
         sandbox_id = backend.pause()
         if sandbox_id:
             mgr._update_sandbox_id(agent_id, sandbox_id)
-            return {"ok": True, "agent_id": agent_id, "sandbox_id": sandbox_id, "status": "paused"}
+            return {
+                "ok": True,
+                "agent_id": agent_id,
+                "sandbox_id": sandbox_id,
+                "status": "paused",
+                "backup_key": backup_key,
+            }
         raise HTTPException(status_code=500, detail="Sandbox pause returned no ID")
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to pause sandbox for {agent_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to pause sandbox")
@@ -251,6 +267,91 @@ async def resume_sandbox(agent_id: str, user: dict = Depends(get_current_user)):
     except Exception as e:
         logger.error(f"Failed to resume sandbox for {agent_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to resume sandbox")
+
+
+@router.post("/agents/{agent_id}/sandbox/backup")
+async def backup_sandbox(agent_id: str, user: dict = Depends(get_current_user)):
+    """Manually trigger a sandbox backup to R2."""
+    accessible = get_user_accessible_agents(user)
+    if accessible is not None and agent_id not in accessible:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    mgr = _get_manager()
+    agent = mgr.get(agent_id)
+    if not agent:
+        raise HTTPException(status_code=404, detail=f"Agent '{agent_id}' not found")
+
+    backend = agent._e2b_backend
+    if backend is None:
+        raise HTTPException(status_code=400, detail="Agent has no E2B sandbox")
+
+    from core.r2_storage import R2Storage
+
+    r2 = R2Storage(_config)
+    if not r2.enabled:
+        raise HTTPException(status_code=400, detail="R2 backup not configured")
+
+    try:
+        key = backend.backup_to_r2(r2)
+        if not key:
+            raise HTTPException(status_code=500, detail="Backup failed")
+        return {"ok": True, "agent_id": agent_id, "key": key}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Backup failed for {agent_id}: {e}")
+        raise HTTPException(status_code=500, detail="Backup failed")
+
+
+@router.get("/agents/{agent_id}/sandbox/backups")
+async def list_sandbox_backups(agent_id: str, user: dict = Depends(get_current_user)):
+    """List available sandbox backups from R2."""
+    accessible = get_user_accessible_agents(user)
+    if accessible is not None and agent_id not in accessible:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    from core.r2_storage import R2Storage
+
+    r2 = R2Storage(_config)
+    if not r2.enabled:
+        return {"backups": []}
+
+    backups = r2.list_backups(agent_id)
+    return {"backups": backups}
+
+
+@router.post("/agents/{agent_id}/sandbox/restore")
+async def restore_sandbox(agent_id: str, user: dict = Depends(get_current_user)):
+    """Restore latest R2 backup into the running sandbox."""
+    accessible = get_user_accessible_agents(user)
+    if accessible is not None and agent_id not in accessible:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    mgr = _get_manager()
+    agent = mgr.get(agent_id)
+    if not agent:
+        raise HTTPException(status_code=404, detail=f"Agent '{agent_id}' not found")
+
+    backend = agent._e2b_backend
+    if backend is None:
+        raise HTTPException(status_code=400, detail="Agent has no E2B sandbox")
+
+    from core.r2_storage import R2Storage
+
+    r2 = R2Storage(_config)
+    if not r2.enabled:
+        raise HTTPException(status_code=400, detail="R2 backup not configured")
+
+    try:
+        restored = backend.restore_from_r2(r2)
+        if not restored:
+            raise HTTPException(status_code=404, detail="No backup found to restore")
+        return {"ok": True, "agent_id": agent_id, "status": "restored"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Restore failed for {agent_id}: {e}")
+        raise HTTPException(status_code=500, detail="Restore failed")
 
 
 @router.post("/agents/{agent_id}/desktop-stream")

@@ -465,6 +465,46 @@ export async function resumeSandbox(
   return res.json();
 }
 
+// --- Sandbox Backups ---
+
+export interface BackupEntry {
+  key: string;
+  size_bytes: number;
+  timestamp: string;
+}
+
+export async function backupSandbox(
+  agentId: string,
+): Promise<{ ok: boolean; key: string }> {
+  const res = await apiFetch(`/agents/${agentId}/sandbox/backup`, {
+    method: "POST",
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(extractErrorMessage(err, "Failed to backup sandbox"));
+  }
+  return res.json();
+}
+
+export async function listSandboxBackups(
+  agentId: string,
+): Promise<{ backups: BackupEntry[] }> {
+  const res = await apiFetch(`/agents/${agentId}/sandbox/backups`);
+  if (!res.ok) return { backups: [] };
+  return res.json();
+}
+
+export async function restoreSandbox(agentId: string): Promise<{ ok: boolean }> {
+  const res = await apiFetch(`/agents/${agentId}/sandbox/restore`, {
+    method: "POST",
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(extractErrorMessage(err, "Failed to restore sandbox"));
+  }
+  return res.json();
+}
+
 // --- Desktop Stream ---
 
 export async function startDesktopStream(

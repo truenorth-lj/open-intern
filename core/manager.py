@@ -127,12 +127,20 @@ class AgentManager:
                 session.commit()
 
     def pause_all_sandboxes(self) -> None:
-        """Pause all active E2B sandboxes and persist their IDs for later resume."""
+        """Backup to R2 and pause all active E2B sandboxes."""
+        from core.r2_storage import R2Storage
+
+        r2 = R2Storage(self.config)
+
         for agent_id, agent in self._agents.items():
             backend = agent._e2b_backend
             if backend is None:
                 continue
             try:
+                # Backup to R2 before pausing (best-effort)
+                if r2.enabled:
+                    backend.backup_to_r2(r2)
+
                 sandbox_id = backend.pause()
                 if sandbox_id:
                     self._update_sandbox_id(agent_id, sandbox_id)

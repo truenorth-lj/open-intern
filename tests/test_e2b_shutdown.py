@@ -15,6 +15,12 @@ def mock_manager():
     mgr = MagicMock(spec=AgentManager)
     mgr._agents = {}
     mgr._session_factory = MagicMock()
+    # Provide a mock config with empty R2 credentials (backup disabled)
+    mgr.config = MagicMock()
+    mgr.config.r2_account_id = ""
+    mgr.config.r2_access_key_id = ""
+    mgr.config.r2_secret_access_key = ""
+    mgr.config.r2_bucket = "test-bucket"
     mgr.pause_all_sandboxes = AgentManager.pause_all_sandboxes.__get__(mgr, AgentManager)
     mgr._update_sandbox_id = MagicMock()
     return mgr
