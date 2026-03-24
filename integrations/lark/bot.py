@@ -207,7 +207,15 @@ class LarkBot(Integration):
                 user_name=sender.sender_id.user_id or "unknown",
                 content=text,
                 is_dm=(chat_type == "p2p"),
-                thread_id=getattr(message, "root_id", None) or message.message_id,
+                thread_id=(
+                    # DM: use chat_id so all messages in the same conversation
+                    # share context instead of each message starting fresh.
+                    # Channel: use thread root_id to separate topics, fall back
+                    # to message_id for standalone messages.
+                    (message.chat_id or message.message_id)
+                    if chat_type == "p2p"
+                    else (getattr(message, "root_id", None) or message.message_id)
+                ),
                 raw=data,
             )
 
