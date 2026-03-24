@@ -479,7 +479,7 @@ export default function AgentSettingsPage({
                         <Textarea
                           id="ssh-key"
                           rows={4}
-                          placeholder={agent?.ssh_key === "***" ? "(encrypted — leave blank to keep)" : "-----BEGIN OPENSSH PRIVATE KEY-----\n...\n-----END OPENSSH PRIVATE KEY-----"}
+                          placeholder={agent?.ssh_key === "***" ? "(SSH key configured — leave blank to keep existing)" : "-----BEGIN OPENSSH PRIVATE KEY-----\n...\n-----END OPENSSH PRIVATE KEY-----"}
                           value={form.ssh_key}
                           onChange={(e) => setForm((f) => ({ ...f, ssh_key: e.target.value }))}
                           className="font-mono text-xs"
