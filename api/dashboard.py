@@ -490,7 +490,7 @@ async def read_file(
 
 class FileWriteRequest(BaseModel):
     path: str = Field(..., min_length=1)
-    content: str
+    content: str = Field(..., max_length=10_000_000)
 
 
 @router.post("/agents/{agent_id}/files/write")
