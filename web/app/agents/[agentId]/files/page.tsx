@@ -97,7 +97,14 @@ export default function AgentFilesPage({
       setFileContent(data.content);
       setEditContent(data.content);
     } catch (e) {
-      setFileContent(`Error: ${e instanceof Error ? e.message : "Failed to read file"}`);
+      const msg = e instanceof Error ? e.message : "Failed to read file";
+      // Backend returns "is a directory" when is_dir was wrong — navigate instead
+      if (msg.toLowerCase().includes("is a directory")) {
+        setSelectedFile(null);
+        loadDir(item.path);
+        return;
+      }
+      setFileContent(`Error: ${msg}`);
     } finally {
       setFileLoading(false);
     }

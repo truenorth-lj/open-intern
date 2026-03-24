@@ -260,7 +260,7 @@ class E2BSandboxBackend(SandboxBackendProtocol):
             return [
                 FileInfo(
                     path=f"{path.rstrip('/')}/{e.name}",
-                    is_dir=e.type == "dir",
+                    is_dir=getattr(e.type, "value", e.type) == "dir",
                     size=getattr(e, "size", None),
                 )
                 for e in entries
@@ -535,10 +535,19 @@ class E2BSandboxBackend(SandboxBackendProtocol):
         if self._sandbox:
             try:
                 sandbox_id = self._sandbox.pause()
+                self._sandbox = None
+                self._existing_sandbox_id = sandbox_id
                 logger.info(f"Paused E2B sandbox {sandbox_id} for agent {self._agent_id}")
                 return sandbox_id
             except Exception as e:
                 logger.error(f"Failed to pause sandbox: {e}")
+                return None
+        # Already paused (e.g. by idle auto-pause) — return the saved ID
+        if self._existing_sandbox_id:
+            logger.info(
+                f"Sandbox already paused for agent {self._agent_id}: {self._existing_sandbox_id}"
+            )
+            return self._existing_sandbox_id
         return None
 
     def kill(self) -> None:
