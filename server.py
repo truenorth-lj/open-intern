@@ -237,6 +237,7 @@ def create_app(config: AppConfig) -> FastAPI:
         sched: CronScheduler | None = getattr(app.state, "cron_scheduler", None)
         telegram_bots: dict = getattr(app.state, "telegram_bots", {})
         discord_bots: dict = getattr(app.state, "discord_bots", {})
+        lark_bots: dict = getattr(app.state, "lark_bots", {})
         agent_count = len(mgr.agents) if mgr else 0
         scheduled_jobs = len(sched.list_jobs()) if sched else 0
         failed: list[str] = getattr(app.state, "failed_platforms", [])
@@ -245,6 +246,7 @@ def create_app(config: AppConfig) -> FastAPI:
             "agents": agent_count,
             "telegram_bots": len(telegram_bots),
             "discord_bots": len(discord_bots),
+            "lark_bots": len(lark_bots),
             "scheduled_jobs": scheduled_jobs,
         }
         if failed:

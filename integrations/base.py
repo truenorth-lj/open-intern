@@ -86,9 +86,14 @@ class Integration(ABC):
             response, _token_usage = await self.agent.chat(
                 event.content, context=event.to_context(), thread_id=thread_id
             )
-        except Exception:
+        except Exception as exc:
             logger.exception(f"Agent chat failed for event from {event.platform}")
-            response = "Sorry, I encountered an error processing your message. Please try again."
+            exc_name = type(exc).__name__
+            exc_msg = str(exc)[:200]
+            response = (
+                f"Sorry, I encountered an error processing your message. "
+                f"Please try again.\n\n[debug: {exc_name}: {exc_msg}]"
+            )
 
         # Send response back
         if response:
