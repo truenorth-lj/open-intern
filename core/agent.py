@@ -582,7 +582,7 @@ class OpenInternAgent:
                     logger.error(
                         f"E2B sandbox ({self.sandbox_mode}) enabled for agent "
                         f"{self.agent_id} but E2B_API_KEY not set. "
-                        "Falling back to no sandbox."
+                        "Continuing without sandbox — file/shell tools disabled."
                     )
                 elif self.sandbox_mode == "desktop":
                     from core.e2b_desktop_backend import E2BDesktopBackend
@@ -609,12 +609,12 @@ class OpenInternAgent:
             except ImportError as exc:
                 pkg = "e2b-desktop" if self.sandbox_mode == "desktop" else "e2b"
                 logger.warning(
-                    f"{pkg} package not installed. Falling back to no sandbox. "
+                    f"{pkg} package not installed — file/shell tools disabled. "
                     f"Install with: pip install {pkg}"
                 )
                 logger.debug("Import error details: %s", exc)
             except Exception as e:
-                logger.error(f"E2B sandbox failed: {e}. Falling back to no sandbox.")
+                logger.error(f"E2B sandbox failed: {e}. Continuing without sandbox.")
 
         # No shell backend for non-sandbox mode
         return None
