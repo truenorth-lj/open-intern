@@ -224,12 +224,13 @@ async def sandbox_status(agent_id: str, user: dict = Depends(get_current_user)):
 
     # Determine backend type and status
     if backend is not None:
+        is_desktop = isinstance(backend, E2BDesktopBackend)
         status = backend.status
-        backend_type = "e2b_desktop" if isinstance(backend, E2BDesktopBackend) else "e2b"
+        backend_type = "e2b_desktop" if is_desktop else "e2b"
         sandbox_id = backend.id
-        stream_url = backend.stream_url if isinstance(backend, E2BDesktopBackend) else None
+        stream_url = backend.stream_url if is_desktop else None
     elif ssh_backend is not None:
-        status = SandboxStatus.RUNNING  # SSH is always "running" if configured
+        status = SandboxStatus.RUNNING  # SSH has no pause lifecycle
         backend_type = "ssh"
         sandbox_id = None
         stream_url = None
