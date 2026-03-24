@@ -21,7 +21,7 @@ class E2BDesktopBackend(E2BSandboxBackend):
         self,
         agent_id: str,
         *,
-        timeout: int = 300,
+        timeout: int = 3600,
         api_key: str | None = None,
         sandbox_id: str | None = None,
     ):

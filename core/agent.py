@@ -478,6 +478,13 @@ class OpenInternAgent:
         if self.sandbox_mode in ("base", "desktop") and self._e2b_backend is not None:
             self._restore_sandbox_from_r2()
             self._seed_skills_to_sandbox()
+            # Register reconnect callbacks so data is restored after sandbox expiry
+            self._e2b_backend._on_reconnect = [
+                self._restore_sandbox_from_r2,
+                self._seed_skills_to_sandbox,
+            ]
+            # Register idle callback — backup to R2 before pausing
+            self._e2b_backend._on_idle = [self._backup_sandbox_to_r2]
             logger.info("Backend ready (E2B unified — files + shell in sandbox)")
 
         # Load skills into system prompt
@@ -557,6 +564,13 @@ class OpenInternAgent:
         if self.sandbox_mode in ("base", "desktop") and self._e2b_backend is not None:
             self._restore_sandbox_from_r2()
             self._seed_skills_to_sandbox()
+            # Register reconnect callbacks so data is restored after sandbox expiry
+            self._e2b_backend._on_reconnect = [
+                self._restore_sandbox_from_r2,
+                self._seed_skills_to_sandbox,
+            ]
+            # Register idle callback — backup to R2 before pausing
+            self._e2b_backend._on_idle = [self._backup_sandbox_to_r2]
 
             backend = self._shell_backend
             fs_tools = create_filesystem_tools(lambda: backend)
@@ -647,6 +661,22 @@ class OpenInternAgent:
             self._e2b_backend.execute("mkdir -p /home/user/skills")
             self._e2b_backend.upload_files(files_to_upload)
             logger.info(f"Seeded {len(files_to_upload)} skill file(s) into E2B sandbox")
+
+    def _backup_sandbox_to_r2(self) -> None:
+        """Backup sandbox files to R2 (called before idle pause)."""
+        if self._e2b_backend is None:
+            return
+        try:
+            from core.r2_storage import R2Storage
+
+            r2 = R2Storage(self.config)
+            if not r2.enabled:
+                return
+            key = self._e2b_backend.backup_to_r2(r2)
+            if key:
+                logger.info(f"Backed up sandbox to R2 for agent {self.agent_id}: {key}")
+        except Exception as e:
+            logger.warning(f"R2 backup failed (non-fatal): {e}")
 
     def _restore_sandbox_from_r2(self) -> None:
         """Restore files from R2 backup into the E2B sandbox."""

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+import threading
 from dataclasses import dataclass
 
 from core.backend_types import (
@@ -44,7 +45,7 @@ class E2BSandboxBackend(SandboxBackendProtocol):
         agent_id: str,
         *,
         template: str = "base",
-        timeout: int = 300,
+        timeout: int = 3600,
         api_key: str | None = None,
         sandbox_id: str | None = None,
     ):
@@ -55,6 +56,11 @@ class E2BSandboxBackend(SandboxBackendProtocol):
         self._sandbox = None
         self._existing_sandbox_id = sandbox_id
         self._reconnecting = False  # guard against infinite reconnect loops
+        self._on_reconnect: list = []  # callbacks invoked after reconnect
+        self._on_idle: list = []  # callbacks invoked before idle pause (e.g. R2 backup)
+        self._idle_timeout_secs = 300  # pause after 5 min idle
+        self._idle_timer: threading.Timer | None = None
+        self._idle_lock = threading.Lock()
 
     @property
     def id(self) -> str:
@@ -125,7 +131,52 @@ class E2BSandboxBackend(SandboxBackendProtocol):
         if self._sandbox is None:
             self.connect()
             logger.info(f"E2B sandbox connected (lazy): {self._sandbox.sandbox_id}")
+        self._reset_idle_timer()
         return self._sandbox
+
+    # --- Idle auto-pause ---
+
+    def _reset_idle_timer(self) -> None:
+        """Reset the idle timer. Called on every sandbox access."""
+        with self._idle_lock:
+            if self._idle_timer is not None:
+                self._idle_timer.cancel()
+            self._idle_timer = threading.Timer(self._idle_timeout_secs, self._idle_pause)
+            self._idle_timer.daemon = True
+            self._idle_timer.start()
+
+    def _idle_pause(self) -> None:
+        """Called when sandbox has been idle — backup and pause to save costs."""
+        with self._idle_lock:
+            self._idle_timer = None
+
+        if self._sandbox is None:
+            return
+
+        logger.info(
+            f"Sandbox {self._sandbox.sandbox_id} idle for "
+            f"{self._idle_timeout_secs}s, backing up and pausing..."
+        )
+
+        # Run pre-pause callbacks (e.g. R2 backup)
+        for cb in self._on_idle:
+            try:
+                cb()
+            except Exception as exc:
+                logger.warning(f"Idle callback failed: {exc}")
+
+        # Pause sandbox (preserves state, stops billing)
+        sandbox_id = self.pause()
+        if sandbox_id:
+            self._existing_sandbox_id = sandbox_id
+            logger.info(f"Sandbox paused after idle: {sandbox_id} for agent {self._agent_id}")
+        else:
+            # Pause failed — sandbox may be dead already
+            self._existing_sandbox_id = None
+            logger.warning(
+                f"Failed to pause sandbox for agent {self._agent_id}, will create new on next use"
+            )
+        self._sandbox = None
 
     def _reconnect_sandbox(self) -> None:
         """Force-reconnect by clearing stale sandbox and creating a new one."""
@@ -139,6 +190,12 @@ class E2BSandboxBackend(SandboxBackendProtocol):
             logger.info(
                 f"Reconnected to new sandbox {self._sandbox.sandbox_id} for agent {self._agent_id}"
             )
+            # Run post-reconnect hooks (e.g. R2 restore, skill seeding)
+            for cb in self._on_reconnect:
+                try:
+                    cb()
+                except Exception as exc:
+                    logger.warning(f"Reconnect callback failed: {exc}")
         finally:
             self._reconnecting = False
 
@@ -476,6 +533,10 @@ class E2BSandboxBackend(SandboxBackendProtocol):
 
     def kill(self) -> None:
         """Kill the sandbox permanently."""
+        with self._idle_lock:
+            if self._idle_timer is not None:
+                self._idle_timer.cancel()
+                self._idle_timer = None
         if self._sandbox:
             try:
                 self._sandbox.kill()
