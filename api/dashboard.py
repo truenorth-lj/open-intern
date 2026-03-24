@@ -426,6 +426,119 @@ async def get_desktop_stream(agent_id: str, user: dict = Depends(get_current_use
     return {"stream_url": None, "agent_id": agent_id, "active": False}
 
 
+# --- Sandbox File Browser ---
+
+
+def _get_sandbox_backend(agent_id: str, user: dict):
+    """Helper: validate access and return the E2B backend or raise."""
+    accessible = get_user_accessible_agents(user)
+    if accessible is not None and agent_id not in accessible:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    mgr = _get_manager()
+    agent = mgr.get(agent_id)
+    if not agent:
+        raise HTTPException(status_code=404, detail=f"Agent '{agent_id}' not found")
+
+    backend = agent._e2b_backend
+    if backend is None:
+        raise HTTPException(status_code=400, detail="Agent has no E2B sandbox")
+    return backend
+
+
+@router.get("/agents/{agent_id}/files")
+async def list_files(
+    agent_id: str,
+    path: str = "/home/user",
+    user: dict = Depends(get_current_user),
+):
+    """List files and directories in the sandbox."""
+    backend = _get_sandbox_backend(agent_id, user)
+    try:
+        items = await backend.als_info(path)
+        return {
+            "path": path,
+            "items": [{"path": f.path, "is_dir": f.is_dir, "size": f.size} for f in items],
+        }
+    except Exception as e:
+        logger.error("Failed to list files for %s at %s: %s", agent_id, path, e)
+        raise HTTPException(status_code=500, detail=f"Failed to list files: {e}")
+
+
+@router.get("/agents/{agent_id}/files/read")
+async def read_file(
+    agent_id: str,
+    path: str,
+    offset: int = 0,
+    limit: int = Field(default=2000, ge=1, le=100_000),
+    user: dict = Depends(get_current_user),
+):
+    """Read a file from the sandbox."""
+    backend = _get_sandbox_backend(agent_id, user)
+    try:
+        content = await backend.aread(path, offset=offset, limit=limit)
+        return {
+            "path": path,
+            "content": content,
+            "offset": offset,
+            "limit": limit,
+        }
+    except Exception as e:
+        logger.error("Failed to read file for %s at %s: %s", agent_id, path, e)
+        raise HTTPException(status_code=500, detail=f"Failed to read file: {e}")
+
+
+class FileWriteRequest(BaseModel):
+    path: str = Field(..., min_length=1)
+    content: str = Field(..., max_length=10_000_000)
+
+
+@router.post("/agents/{agent_id}/files/write")
+async def write_file(
+    agent_id: str,
+    body: FileWriteRequest,
+    user: dict = Depends(get_current_user),
+):
+    """Write content to a file in the sandbox."""
+    backend = _get_sandbox_backend(agent_id, user)
+    try:
+        result = await backend.awrite(body.path, body.content)
+        if result.error:
+            raise HTTPException(status_code=500, detail=result.error)
+        return {"ok": True, "path": result.path}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to write file for %s at %s: %s", agent_id, body.path, e)
+        raise HTTPException(status_code=500, detail=f"Failed to write file: {e}")
+
+
+class MkdirRequest(BaseModel):
+    path: str = Field(..., min_length=1)
+
+
+@router.post("/agents/{agent_id}/files/mkdir")
+async def mkdir(
+    agent_id: str,
+    body: MkdirRequest,
+    user: dict = Depends(get_current_user),
+):
+    """Create a directory in the sandbox."""
+    backend = _get_sandbox_backend(agent_id, user)
+    try:
+        import shlex
+
+        result = await backend.aexecute(f"mkdir -p {shlex.quote(body.path)}")
+        if result.exit_code != 0:
+            raise HTTPException(status_code=500, detail=result.output or "mkdir failed")
+        return {"ok": True, "path": body.path}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to mkdir for %s at %s: %s", agent_id, body.path, e)
+        raise HTTPException(status_code=500, detail=f"Failed to create directory: {e}")
+
+
 class TelegramTestRequest(BaseModel):
     chat_id: str = Field(..., pattern=r"^-?\d+$")
     message: str = Field(
