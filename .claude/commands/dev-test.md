@@ -77,16 +77,11 @@ Full development workflow: clarify → worktree → implement → test → PR �
     ```
 23. **Report** — Summarize what was done, link to merged PR.
 
-## Phase 7: Retrospective
+## Phase 7: Retrospective (MANDATORY)
 
-24. **Self-review** — After merge, reflect on the process:
-    - **What went well?** — Approaches that worked, good decisions made
-    - **What went wrong?** — Mistakes, wasted time, wrong assumptions
-    - **Root cause** — Why did the issues happen? (not just what)
-    - **Process improvement** — What concrete change would prevent this next time?
-    - **Risk assessment** — Did any action cause more harm than the original problem?
-25. **Save learnings** — If any insight is non-obvious and useful for future work, save to memory (feedback type). Don't save trivial or one-off observations.
-26. **Share with user** — Present findings concisely. Focus on actionable improvements, not just observations.
+**IMPORTANT: This phase is NOT optional. You MUST run `/retro` immediately after cleanup.**
+
+24. **Run `/retro`** — Execute the retro skill. Do not attempt to do the retrospective manually or skip it.
 
 ## Important Notes
 
