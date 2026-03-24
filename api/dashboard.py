@@ -438,15 +438,11 @@ def _get_sandbox_backend(agent_id: str, user: dict):
     mgr = _get_manager()
     agent = mgr.get(agent_id)
     if not agent:
-        raise HTTPException(
-            status_code=404, detail=f"Agent '{agent_id}' not found"
-        )
+        raise HTTPException(status_code=404, detail=f"Agent '{agent_id}' not found")
 
     backend = agent._e2b_backend
     if backend is None:
-        raise HTTPException(
-            status_code=400, detail="Agent has no E2B sandbox"
-        )
+        raise HTTPException(status_code=400, detail="Agent has no E2B sandbox")
     return backend
 
 
@@ -462,16 +458,11 @@ async def list_files(
         items = await backend.als_info(path)
         return {
             "path": path,
-            "items": [
-                {"path": f.path, "is_dir": f.is_dir, "size": f.size}
-                for f in items
-            ],
+            "items": [{"path": f.path, "is_dir": f.is_dir, "size": f.size} for f in items],
         }
     except Exception as e:
         logger.error("Failed to list files for %s at %s: %s", agent_id, path, e)
-        raise HTTPException(
-            status_code=500, detail=f"Failed to list files: {e}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to list files: {e}")
 
 
 @router.get("/agents/{agent_id}/files/read")
@@ -494,9 +485,7 @@ async def read_file(
         }
     except Exception as e:
         logger.error("Failed to read file for %s at %s: %s", agent_id, path, e)
-        raise HTTPException(
-            status_code=500, detail=f"Failed to read file: {e}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to read file: {e}")
 
 
 class FileWriteRequest(BaseModel):
@@ -520,12 +509,8 @@ async def write_file(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(
-            "Failed to write file for %s at %s: %s", agent_id, body.path, e
-        )
-        raise HTTPException(
-            status_code=500, detail=f"Failed to write file: {e}"
-        )
+        logger.error("Failed to write file for %s at %s: %s", agent_id, body.path, e)
+        raise HTTPException(status_code=500, detail=f"Failed to write file: {e}")
 
 
 class MkdirRequest(BaseModel):
@@ -543,19 +528,13 @@ async def mkdir(
     try:
         result = await backend.aexecute(f"mkdir -p {body.path}")
         if result.exit_code != 0:
-            raise HTTPException(
-                status_code=500, detail=result.output or "mkdir failed"
-            )
+            raise HTTPException(status_code=500, detail=result.output or "mkdir failed")
         return {"ok": True, "path": body.path}
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(
-            "Failed to mkdir for %s at %s: %s", agent_id, body.path, e
-        )
-        raise HTTPException(
-            status_code=500, detail=f"Failed to create directory: {e}"
-        )
+        logger.error("Failed to mkdir for %s at %s: %s", agent_id, body.path, e)
+        raise HTTPException(status_code=500, detail=f"Failed to create directory: {e}")
 
 
 class TelegramTestRequest(BaseModel):
