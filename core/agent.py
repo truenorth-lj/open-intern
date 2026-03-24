@@ -186,28 +186,37 @@ class OpenInternAgent:
         memory_tools = create_memory_tools(self.memory_store)
         all_tools = memory_tools + self.extra_tools
 
-        # Create checkpointer for conversation threading (persisted to PostgreSQL)
-        from langgraph.checkpoint.postgres import PostgresSaver
-        from psycopg import Connection
-        from psycopg.rows import dict_row
+        # Create async checkpointer + store for conversation threading (PostgreSQL)
+        # initialize() is called before the event loop starts, so asyncio.run() is safe.
+        import asyncio
 
-        self._checkpoint_conn = Connection.connect(
-            self.config.database_url,
-            autocommit=True,
-            prepare_threshold=0,
-            row_factory=dict_row,
-        )
-        self._checkpointer = PostgresSaver(self._checkpoint_conn)
-        self._checkpointer.setup()
-        logger.info("Checkpointer ready (PostgreSQL)")
+        async def _setup_async_pg():
+            from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+            from langgraph.store.postgres import AsyncPostgresStore
+            from psycopg import AsyncConnection
+            from psycopg.rows import dict_row
 
-        # Create PostgresStore for persistent file storage
-        from langgraph.store.postgres import PostgresStore
+            conn = await AsyncConnection.connect(
+                self.config.database_url,
+                autocommit=True,
+                prepare_threshold=0,
+                row_factory=dict_row,
+            )
+            checkpointer = AsyncPostgresSaver(conn)
+            await checkpointer.setup()
 
-        self._store_ctx = PostgresStore.from_conn_string(self.config.database_url)
-        self._postgres_store = self._store_ctx.__enter__()
-        self._postgres_store.setup()
-        logger.info("PostgresStore ready")
+            store_ctx = AsyncPostgresStore.from_conn_string(self.config.database_url)
+            store = await store_ctx.__aenter__()
+            await store.setup()
+            return conn, checkpointer, store_ctx, store
+
+        (
+            self._checkpoint_conn,
+            self._checkpointer,
+            self._store_ctx,
+            self._postgres_store,
+        ) = asyncio.run(_setup_async_pg())
+        logger.info("Async checkpointer + store ready (PostgreSQL)")
 
         # Seed skills from disk into PostgresStore (used by none mode and as source for E2B seeding)
         from scripts.seed_skills import seed_skills
@@ -433,11 +442,8 @@ class OpenInternAgent:
         if thread_id:
             await self._maybe_compact(invoke_config)
 
-        # Invoke the agent in a thread pool (checkpointer doesn't support async)
-        import asyncio
-
-        result = await asyncio.to_thread(
-            self._agent.invoke,
+        # Invoke the agent asynchronously (async checkpointer + async tool support)
+        result = await self._agent.ainvoke(
             {"messages": [{"role": "user", "content": enriched_message}]},
             invoke_config,
         )
@@ -565,7 +571,7 @@ class OpenInternAgent:
 
         try:
             final_state = await asyncio.wait_for(
-                asyncio.to_thread(self._agent.get_state, invoke_config),
+                self._agent.aget_state(invoke_config),
                 timeout=30.0,
             )
         except TimeoutError:
@@ -610,10 +616,8 @@ class OpenInternAgent:
 
     async def _do_compact(self, invoke_config: dict) -> None:
         """Perform the actual compaction (called under lock)."""
-        import asyncio
-
         try:
-            state = await asyncio.to_thread(self._agent.get_state, invoke_config)
+            state = await self._agent.aget_state(invoke_config)
             if not state or not state.values:
                 return
 
@@ -641,11 +645,7 @@ class OpenInternAgent:
                 )
 
             # Update the checkpoint with compacted messages
-            await asyncio.to_thread(
-                self._agent.update_state,
-                invoke_config,
-                {"messages": new_messages},
-            )
+            await self._agent.aupdate_state(invoke_config, {"messages": new_messages})
             logger.info(f"Compaction complete: {len(messages)} -> {len(new_messages)} messages")
 
         except Exception as e:
