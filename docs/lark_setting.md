@@ -1,36 +1,40 @@
-# Lark setting
+# Lark (Feishu) Bot Setup
 
+This guide walks you through creating a Lark bot and connecting it to your Open Intern agent.
 
-## Create bot
+## 1. Create a Custom App
 
-go to https://open.larksuite.com/app
-Click create custom app
+Go to [Lark Open Platform](https://open.larksuite.com/app) and click **Create Custom App**.
 
-![1774276754079](image/lark_setting/1774276754079.png)
+![create custom app](image/lark_setting/1774276754079.png)
 
+## 2. Add Permission Scopes
 
+Navigate to the **Permissions & Scopes** page.
 
-## Add permission
+![permissions page](image/lark_setting/1774276804507.png)
 
-![1774276804507](image/lark_setting/1774276804507.png)
+1. Click **Add permission scopes to app**.
+2. Search for `im:message` and add the following scopes:
+   - **Receive messages sent to the bot in peer-to-peer chats** (`im:message.p2p_msg` / `im:message.p2p_msg:readonly`)
+   - **Receive group chat messages mentioning the bot** (`im:message.group_msg` / `im:message.group_msg:readonly`)
+   - **Send messages as bot** (`im:message:send_as_bot`)
+3. Click **Add Scopes** to confirm.
 
-1. 點擊 "Add permission scopes to app"（你截圖中的藍色按鈕）
-2. 搜尋 im:message — 在搜尋框輸入這個關鍵字
-3. 勾選以下幾個：- Receive messages sent to the bot in peer-to-peer chats (im:message.p2p_msg /im:message.p2p_msg:readonly)- Receive group chat messages mentioning the bot (im:message.group_msg /im:message.group_msg:readonly)- Send messages as bot (im:message:send_as_bot)
-4. 點擊 Add Scopes 確認
+## 3. Get App ID and App Secret
 
-## Get app_id and app_secret
+Go to the **Credentials** page.
 
-go to Credential page
+![credentials page](image/lark_setting/1774276979032.png)
 
-![1774276979032](image/lark_setting/1774276979032.png)
+Copy the **App ID** and **App Secret**.
 
-Copy app id and secret
+![copy credentials](image/lark_setting/1774277051313.png)
 
-![1774277051313](image/lark_setting/1774277051313.png)
+## 4. Connect to Open Intern
 
-paste on dashboard
+Open the Open Intern dashboard, navigate to your agent's **Settings** page, and paste the App ID and App Secret in the Lark section.
 
-![1774277083750](image/lark_setting/1774277083750.png)
+![paste in dashboard](image/lark_setting/1774277083750.png)
 
-Click create Agent
+Click **Create Agent** to finish setup. Your Lark bot is now connected.
