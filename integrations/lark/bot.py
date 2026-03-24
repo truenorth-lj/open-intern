@@ -100,15 +100,8 @@ class LarkBot(Integration):
         try:
             from lark_oapi.api.contact.v3 import GetUserRequest
 
-            request = (
-                GetUserRequest.builder()
-                .user_id(open_id)
-                .user_id_type("open_id")
-                .build()
-            )
-            response = await asyncio.to_thread(
-                self._api_client.contact.v3.user.get, request
-            )
+            request = GetUserRequest.builder().user_id(open_id).user_id_type("open_id").build()
+            response = await asyncio.to_thread(self._api_client.contact.v3.user.get, request)
             if response.success() and response.data and response.data.user:
                 name = response.data.user.name or ""
                 if name:
