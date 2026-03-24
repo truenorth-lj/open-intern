@@ -9,7 +9,7 @@ import logging
 import secrets
 import time
 from base64 import urlsafe_b64decode, urlsafe_b64encode
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import uuid4
 
@@ -187,9 +187,9 @@ class LoginResponse(BaseModel):
 
 @router.post("/login", response_model=LoginResponse)
 def login(body: LoginRequest):
-    # Check admin login (constant-time hash comparison)
+    # Check admin login (constant-time comparison for both email and password)
     is_admin = (
-        body.email == _admin_email
+        secrets.compare_digest(body.email, _admin_email)
         and _admin_password_hash
         and _verify_password(body.password, _admin_password_hash)
     )
@@ -422,8 +422,6 @@ def create_api_key(agent_id: str, body: ApiKeyCreate, admin: dict = Depends(requ
     key_hash = _hash_api_key(raw_key)
     key_prefix = raw_key[:11]  # "oi_" + first 8 chars
     now = datetime.now(timezone.utc)
-
-    from datetime import timedelta
 
     expires_at = None
     if body.expires_in_days is not None:
