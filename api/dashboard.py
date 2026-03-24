@@ -196,6 +196,63 @@ async def reload_agent(agent_id: str, admin: dict = Depends(require_admin)):
     return {"ok": True, "agent_id": agent_id, "status": "reloaded"}
 
 
+@router.post("/agents/{agent_id}/sandbox/pause")
+async def pause_sandbox(agent_id: str, user: dict = Depends(get_current_user)):
+    """Pause the agent's E2B sandbox, preserving its state for later resume."""
+    accessible = get_user_accessible_agents(user)
+    if accessible is not None and agent_id not in accessible:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    mgr = _get_manager()
+    agent = mgr.get(agent_id)
+    if not agent:
+        raise HTTPException(status_code=404, detail=f"Agent '{agent_id}' not found")
+
+    backend = agent._e2b_backend
+    if backend is None:
+        raise HTTPException(status_code=400, detail="Agent has no E2B sandbox")
+
+    try:
+        sandbox_id = backend.pause()
+        if sandbox_id:
+            mgr._update_sandbox_id(agent_id, sandbox_id)
+            return {"ok": True, "agent_id": agent_id, "sandbox_id": sandbox_id, "status": "paused"}
+        raise HTTPException(status_code=500, detail="Sandbox pause returned no ID")
+    except Exception as e:
+        logger.error(f"Failed to pause sandbox for {agent_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to pause sandbox")
+
+
+@router.post("/agents/{agent_id}/sandbox/resume")
+async def resume_sandbox(agent_id: str, user: dict = Depends(get_current_user)):
+    """Resume a previously paused E2B sandbox."""
+    accessible = get_user_accessible_agents(user)
+    if accessible is not None and agent_id not in accessible:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    mgr = _get_manager()
+    agent = mgr.get(agent_id)
+    if not agent:
+        raise HTTPException(status_code=404, detail=f"Agent '{agent_id}' not found")
+
+    backend = agent._e2b_backend
+    if backend is None:
+        raise HTTPException(status_code=400, detail="Agent has no E2B sandbox")
+
+    try:
+        backend.connect()
+        new_id = backend.sandbox_id
+        if not new_id:
+            raise HTTPException(status_code=500, detail="Sandbox resume did not return a valid ID")
+        mgr._update_sandbox_id(agent_id, new_id)
+        return {"ok": True, "agent_id": agent_id, "sandbox_id": new_id, "status": "running"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to resume sandbox for {agent_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to resume sandbox")
+
+
 @router.post("/agents/{agent_id}/desktop-stream")
 async def start_desktop_stream(agent_id: str, user: dict = Depends(get_current_user)):
     """Start desktop sandbox streaming and return the noVNC URL."""
