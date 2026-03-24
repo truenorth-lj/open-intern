@@ -19,6 +19,7 @@ const agentSubItems = [
   { suffix: "/chat", label: "Chat" },
   { suffix: "/memories", label: "Memories" },
   { suffix: "/skills", label: "Skills" },
+  { suffix: "/scheduled-jobs", label: "Scheduled Jobs" },
 ];
 
 interface NavSidebarProps {
