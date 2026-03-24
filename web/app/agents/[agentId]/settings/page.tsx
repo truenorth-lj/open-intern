@@ -485,7 +485,7 @@ export default function AgentSettingsPage({
                           className="font-mono text-xs"
                         />
                         <p className="text-xs text-muted-foreground">
-                          Paste your SSH private key. Leave blank to use password auth or ssh-agent.
+                          Paste your SSH private key. Leave blank to rely on ssh-agent.
                           The key is encrypted at rest.
                         </p>
                       </div>

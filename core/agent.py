@@ -661,6 +661,11 @@ class OpenInternAgent:
                 "Continuing without sandbox — file/shell tools disabled."
             )
             return None
+        if self.ssh_key and not self.ssh_key.strip().startswith("-----BEGIN"):
+            logger.warning(
+                f"SSH key for agent {self.agent_id} doesn't look like a PEM key — "
+                "connection may fail"
+            )
         try:
             from core.ssh_backend import SSHBackend, SSHConnectionInfo
 

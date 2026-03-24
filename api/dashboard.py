@@ -79,7 +79,7 @@ class AgentCreate(BaseModel):
     importance_decay_days: int = Field(90, ge=1)
     sandbox_mode: str = "base"  # "none" | "base" | "desktop" | "ssh"
     ssh_host: str = ""
-    ssh_port: int = 22
+    ssh_port: int = Field(22, ge=1, le=65535)
     ssh_user: str = "user"
     ssh_key: str = ""
 
