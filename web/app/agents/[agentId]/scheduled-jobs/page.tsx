@@ -19,7 +19,10 @@ import {
   pauseScheduledJob,
   resumeScheduledJob,
   triggerScheduledJob,
+  listJobTemplates,
+  installJobTemplate,
   type ScheduledJob,
+  type JobTemplate,
 } from "@/lib/api";
 
 function formatSchedule(job: ScheduledJob): string {
@@ -51,6 +54,14 @@ function formatTime(iso: string | null): string {
   }
 }
 
+const CATEGORY_LABELS: Record<string, string> = {
+  meta: "Meta",
+  devops: "DevOps",
+  coding: "Coding",
+  data: "Data",
+  communication: "Communication",
+};
+
 export default function ScheduledJobsPage({
   params,
 }: {
@@ -58,17 +69,29 @@ export default function ScheduledJobsPage({
 }) {
   const { agentId } = use(params);
   const [jobs, setJobs] = useState<ScheduledJob[]>([]);
+  const [templates, setTemplates] = useState<JobTemplate[]>([]);
+  const [installedTemplateIds, setInstalledTemplateIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [actionMsg, setActionMsg] = useState("");
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [installingTemplate, setInstallingTemplate] = useState<string | null>(null);
 
   async function loadJobs() {
     try {
       setError("");
       const data = await listScheduledJobs(agentId);
       setJobs(data.jobs);
+      // Track which templates are already installed
+      const installed = new Set<string>();
+      for (const job of data.jobs) {
+        const meta = (job as ScheduledJob & { metadata?: Record<string, string> }).metadata;
+        if (meta?.template_id) {
+          installed.add(meta.template_id);
+        }
+      }
+      setInstalledTemplateIds(installed);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load jobs");
     } finally {
@@ -76,8 +99,18 @@ export default function ScheduledJobsPage({
     }
   }
 
+  async function loadTemplates() {
+    try {
+      const data = await listJobTemplates();
+      setTemplates(data.templates);
+    } catch {
+      // Templates are optional — don't block the page
+    }
+  }
+
   useEffect(() => {
     loadJobs();
+    loadTemplates();
   }, [agentId]);
 
   async function handleAction(
@@ -97,6 +130,21 @@ export default function ScheduledJobsPage({
       setError(err instanceof Error ? err.message : "Action failed");
     } finally {
       setPendingAction(null);
+    }
+  }
+
+  async function handleInstallTemplate(template: JobTemplate) {
+    try {
+      setInstallingTemplate(template.id);
+      setActionMsg("");
+      setError("");
+      await installJobTemplate(template.id, { agent_id: agentId });
+      setActionMsg(`Installed "${template.name}" — you can customize the schedule below.`);
+      await loadJobs();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to install template");
+    } finally {
+      setInstallingTemplate(null);
     }
   }
 
@@ -134,6 +182,58 @@ export default function ScheduledJobsPage({
         </div>
       )}
 
+      {/* Job Templates Marketplace */}
+      {templates.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Templates</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {templates.map((tpl) => {
+                const isInstalled = installedTemplateIds.has(tpl.id);
+                return (
+                  <div
+                    key={tpl.id}
+                    className="border rounded-lg p-4 flex flex-col gap-2"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <h3 className="font-medium text-sm">{tpl.name}</h3>
+                        <p className="text-muted-foreground text-xs mt-1">
+                          {tpl.description}
+                        </p>
+                      </div>
+                      <Badge variant="secondary" className="text-xs shrink-0">
+                        {CATEGORY_LABELS[tpl.category] || tpl.category}
+                      </Badge>
+                    </div>
+                    <div className="flex items-center justify-between mt-auto pt-2">
+                      <span className="text-xs text-muted-foreground">
+                        Default: Cron {tpl.default_schedule_expr} ({tpl.default_timezone})
+                      </span>
+                      {isInstalled ? (
+                        <Badge variant="outline" className="text-green-600 border-green-600">
+                          Installed
+                        </Badge>
+                      ) : (
+                        <Button
+                          size="sm"
+                          disabled={installingTemplate !== null}
+                          onClick={() => handleInstallTemplate(tpl)}
+                        >
+                          {installingTemplate === tpl.id ? "Installing..." : "Install"}
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardHeader>
           <CardTitle className="text-lg">
@@ -143,7 +243,7 @@ export default function ScheduledJobsPage({
         <CardContent>
           {jobs.length === 0 ? (
             <p className="text-muted-foreground text-center py-10">
-              No scheduled jobs yet. Jobs created via chat will appear here.
+              No scheduled jobs yet. Install a template above or create one via chat.
             </p>
           ) : (
             <Table>
