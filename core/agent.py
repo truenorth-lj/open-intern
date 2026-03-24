@@ -675,6 +675,8 @@ class OpenInternAgent:
             key = self._e2b_backend.backup_to_r2(r2)
             if key:
                 logger.info(f"Backed up sandbox to R2 for agent {self.agent_id}: {key}")
+            else:
+                logger.warning(f"R2 backup returned no key for agent {self.agent_id}")
         except Exception as e:
             logger.warning(f"R2 backup failed (non-fatal): {e}")
 

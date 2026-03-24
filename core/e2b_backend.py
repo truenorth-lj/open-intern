@@ -61,6 +61,7 @@ class E2BSandboxBackend(SandboxBackendProtocol):
         self._idle_timeout_secs = 300  # pause after 5 min idle
         self._idle_timer: threading.Timer | None = None
         self._idle_lock = threading.Lock()
+        self._pausing = False  # guard: don't reset timer during pause
 
     @property
     def id(self) -> str:
@@ -139,6 +140,8 @@ class E2BSandboxBackend(SandboxBackendProtocol):
     def _reset_idle_timer(self) -> None:
         """Reset the idle timer. Called on every sandbox access."""
         with self._idle_lock:
+            if self._pausing:
+                return  # don't reset while mid-pause
             if self._idle_timer is not None:
                 self._idle_timer.cancel()
             self._idle_timer = threading.Timer(self._idle_timeout_secs, self._idle_pause)
@@ -147,36 +150,43 @@ class E2BSandboxBackend(SandboxBackendProtocol):
 
     def _idle_pause(self) -> None:
         """Called when sandbox has been idle — backup and pause to save costs."""
-        with self._idle_lock:
-            self._idle_timer = None
+        try:
+            with self._idle_lock:
+                self._idle_timer = None
+                if self._sandbox is None:
+                    return
+                self._pausing = True
 
-        if self._sandbox is None:
-            return
-
-        logger.info(
-            f"Sandbox {self._sandbox.sandbox_id} idle for "
-            f"{self._idle_timeout_secs}s, backing up and pausing..."
-        )
-
-        # Run pre-pause callbacks (e.g. R2 backup)
-        for cb in self._on_idle:
-            try:
-                cb()
-            except Exception as exc:
-                logger.warning(f"Idle callback failed: {exc}")
-
-        # Pause sandbox (preserves state, stops billing)
-        sandbox_id = self.pause()
-        if sandbox_id:
-            self._existing_sandbox_id = sandbox_id
-            logger.info(f"Sandbox paused after idle: {sandbox_id} for agent {self._agent_id}")
-        else:
-            # Pause failed — sandbox may be dead already
-            self._existing_sandbox_id = None
-            logger.warning(
-                f"Failed to pause sandbox for agent {self._agent_id}, will create new on next use"
+            logger.info(
+                f"Sandbox {self._sandbox.sandbox_id} idle for "
+                f"{self._idle_timeout_secs}s, backing up and pausing..."
             )
-        self._sandbox = None
+
+            # Run pre-pause callbacks (e.g. R2 backup)
+            for cb in self._on_idle:
+                try:
+                    cb()
+                except Exception as exc:
+                    logger.warning(f"Idle callback failed: {exc}")
+
+            # Pause sandbox (preserves state, stops billing)
+            sandbox_id = self.pause()
+            if sandbox_id:
+                self._existing_sandbox_id = sandbox_id
+                logger.info(f"Sandbox paused after idle: {sandbox_id} for agent {self._agent_id}")
+            else:
+                # Pause failed — sandbox may be dead already
+                self._existing_sandbox_id = None
+                logger.warning(
+                    f"Failed to pause sandbox for agent {self._agent_id}, "
+                    "will create new on next use"
+                )
+            self._sandbox = None
+        except Exception as e:
+            logger.error(f"Idle pause failed for agent {self._agent_id}: {e}")
+        finally:
+            with self._idle_lock:
+                self._pausing = False
 
     def _reconnect_sandbox(self) -> None:
         """Force-reconnect by clearing stale sandbox and creating a new one."""
