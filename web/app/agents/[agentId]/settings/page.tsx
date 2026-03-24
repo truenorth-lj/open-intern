@@ -20,6 +20,7 @@ import {
   type AgentInfo,
   type ApiKeyInfo,
 } from "@/lib/api";
+import { useDesktopStream } from "@/lib/use-desktop-stream";
 
 const LLM_PRESETS: Record<string, { provider: string; model: string }> = {
   "Claude Sonnet 4.6": { provider: "claude", model: "claude-sonnet-4-6" },
@@ -64,6 +65,9 @@ export default function AgentSettingsPage({
   const [testMsg, setTestMsg] = useState("");
   const [testLoading, setTestLoading] = useState(false);
 
+  // Desktop stream
+  const stream = useDesktopStream(agentId);
+
   // API keys
   const [apiKeys, setApiKeys] = useState<ApiKeyInfo[]>([]);
   const [apiKeyName, setApiKeyName] = useState("");
@@ -76,7 +80,8 @@ export default function AgentSettingsPage({
     if (authLoading) return;
     loadAgent();
     loadApiKeys();
-  }, [authLoading, agentId]);
+    stream.loadStatus();
+  }, [authLoading, agentId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function loadAgent() {
     try {
@@ -473,6 +478,64 @@ export default function AgentSettingsPage({
             <p><span className="text-muted-foreground">Role:</span> {agent.role}</p>
             <p><span className="text-muted-foreground">Model:</span> {agent.llm_provider}:{agent.llm_model}</p>
             <p><span className="text-muted-foreground">Personality:</span> {agent.personality}</p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Desktop Stream — only shown when sandbox_mode is "desktop" */}
+      {(agent.sandbox_mode === "desktop" || form.sandbox_mode === "desktop") && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Desktop Stream</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              View the agent&apos;s desktop environment with browser in real-time via noVNC.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {stream.error && (
+              <p className="text-sm text-destructive">{stream.error}</p>
+            )}
+
+            {stream.streamUrl ? (
+              <>
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="text-green-600 border-green-600">
+                    Streaming
+                  </Badge>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => window.open(stream.streamUrl!, "_blank")}
+                  >
+                    Open in New Tab
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={stream.stop}
+                    disabled={stream.loading}
+                  >
+                    {stream.loading ? "Stopping..." : "Stop Stream"}
+                  </Button>
+                </div>
+                <div className="rounded-md border overflow-hidden bg-black">
+                  <iframe
+                    src={stream.streamUrl}
+                    className="w-full border-0"
+                    style={{ height: "600px" }}
+                    allow="clipboard-read; clipboard-write"
+                    title="Desktop Stream"
+                  />
+                </div>
+              </>
+            ) : (
+              <Button
+                onClick={stream.start}
+                disabled={stream.loading}
+              >
+                {stream.loading ? "Starting Desktop..." : "Launch Desktop"}
+              </Button>
+            )}
           </CardContent>
         </Card>
       )}
