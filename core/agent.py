@@ -711,7 +711,8 @@ class OpenInternAgent:
         if context.get("channel_id") and context.get("platform") != "web":
             enriched_message = (
                 f"[Context: channel={context.get('channel_id', '')}, "
-                f"user={context.get('user_name', 'unknown')}, "
+                f"user_id={context.get('user_id', '')}, "
+                f"user_name={context.get('user_name', 'unknown')}, "
                 f"platform={context.get('platform', 'unknown')}]\n\n"
                 f"{message}"
             )
@@ -792,7 +793,8 @@ class OpenInternAgent:
         if context.get("channel_id") and context.get("platform") != "web":
             enriched_message = (
                 f"[Context: channel={context.get('channel_id', '')}, "
-                f"user={context.get('user_name', 'unknown')}, "
+                f"user_id={context.get('user_id', '')}, "
+                f"user_name={context.get('user_name', 'unknown')}, "
                 f"platform={context.get('platform', 'unknown')}]\n\n"
                 f"{message}"
             )

@@ -42,6 +42,7 @@ class LarkBot(Integration):
         self.app_secret = app_secret
         self._domain = domain or LARK_DOMAIN
         self._bot_open_id: str = ""
+        self._user_name_cache: dict[str, str] = {}
         self._ws_thread: threading.Thread | None = None
 
         # API client for sending messages
@@ -91,6 +92,31 @@ class LarkBot(Integration):
                 "Could not fetch bot open_id, self-message filtering disabled",
                 exc_info=True,
             )
+
+    async def _fetch_user_name(self, open_id: str) -> str:
+        """Fetch a user's display name via Contact API, with in-memory cache."""
+        if open_id in self._user_name_cache:
+            return self._user_name_cache[open_id]
+        try:
+            from lark_oapi.api.contact.v3 import GetUserRequest
+
+            request = (
+                GetUserRequest.builder()
+                .user_id(open_id)
+                .user_id_type("open_id")
+                .build()
+            )
+            response = await asyncio.to_thread(
+                self._api_client.contact.v3.user.get, request
+            )
+            if response.success() and response.data and response.data.user:
+                name = response.data.user.name or ""
+                if name:
+                    self._user_name_cache[open_id] = name
+                    return name
+        except Exception:
+            logger.debug(f"Could not fetch user name for {open_id}", exc_info=True)
+        return ""
 
     async def start(self) -> None:
         """Start the WebSocket connection in a background thread."""
@@ -184,48 +210,54 @@ class LarkBot(Integration):
     def _is_self(self, event: ChatEvent) -> bool:
         return event.user_id == self._bot_open_id
 
+    async def _handle_lark_message(self, data: P2ImMessageReceiveV1) -> None:
+        """Async handler for incoming Lark messages."""
+        message = data.event.message
+        sender = data.event.sender
+
+        # Parse message content
+        content_data = json.loads(message.content)
+        text = content_data.get("text", "")
+        if not text:
+            return
+
+        open_id = sender.sender_id.open_id or ""
+        user_id = sender.sender_id.user_id or ""
+
+        # Resolve display name via Contact API (cached)
+        user_name = await self._fetch_user_name(open_id) if open_id else ""
+        if not user_name:
+            user_name = user_id or "unknown"
+
+        chat_type = message.chat_type or ""
+        chat_event = ChatEvent(
+            platform="lark",
+            event_type="message",
+            channel_id=message.chat_id or "",
+            user_id=open_id,
+            user_name=user_name,
+            content=text,
+            is_dm=(chat_type == "p2p"),
+            thread_id=(
+                (message.chat_id or message.message_id)
+                if chat_type == "p2p"
+                else (getattr(message, "root_id", None) or message.message_id)
+            ),
+            raw=data,
+        )
+
+        if self._is_self(chat_event):
+            return
+
+        await self.handle_event(chat_event)
+
     def _on_message_receive(self, data: P2ImMessageReceiveV1) -> None:
         """Sync callback invoked by the SDK when a message is received."""
         try:
-            message = data.event.message
-            sender = data.event.sender
-
-            # Parse message content
-            content_data = json.loads(message.content)
-            text = content_data.get("text", "")
-            if not text:
-                return
-
-            chat_type = message.chat_type or ""
-            # Lark field mapping: open_id is the stable user identifier,
-            # user_id is a human-readable ID (not a display name).
-            chat_event = ChatEvent(
-                platform="lark",
-                event_type="message",
-                channel_id=message.chat_id or "",
-                user_id=sender.sender_id.open_id or "",
-                user_name=sender.sender_id.user_id or "unknown",
-                content=text,
-                is_dm=(chat_type == "p2p"),
-                thread_id=(
-                    # DM: use chat_id so all messages in the same conversation
-                    # share context instead of each message starting fresh.
-                    # Channel: use thread root_id to separate topics, fall back
-                    # to message_id for standalone messages.
-                    (message.chat_id or message.message_id)
-                    if chat_type == "p2p"
-                    else (getattr(message, "root_id", None) or message.message_id)
-                ),
-                raw=data,
-            )
-
-            # Skip self messages
-            if self._is_self(chat_event):
-                return
-
-            # Schedule async handle_event on the main event loop
+            # Schedule async handler on the main event loop
             if self._loop and self._loop.is_running():
-                future = asyncio.run_coroutine_threadsafe(self.handle_event(chat_event), self._loop)
+                coro = self._handle_lark_message(data)
+                future = asyncio.run_coroutine_threadsafe(coro, self._loop)
                 future.add_done_callback(
                     lambda f: (
                         logger.exception("Error in handle_event", exc_info=f.exception())
