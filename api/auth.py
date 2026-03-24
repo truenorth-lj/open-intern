@@ -410,8 +410,9 @@ def create_api_key(agent_id: str, body: ApiKeyCreate, admin: dict = Depends(requ
     key_prefix = raw_key[:11]  # "oi_" + first 8 chars
     now = datetime.now(timezone.utc)
 
+    record_id = str(uuid4())
     record = ApiKeyRecord(
-        id=str(uuid4()),
+        id=record_id,
         key_prefix=key_prefix,
         key_hash=key_hash,
         agent_id=agent_id,
@@ -434,7 +435,7 @@ def create_api_key(agent_id: str, body: ApiKeyCreate, admin: dict = Depends(requ
     logger.info("API key created for agent %s by %s", agent_id, admin.get("user_id", ""))
 
     return {
-        "id": record.id,
+        "id": record_id,
         "key": raw_key,  # shown once
         "key_prefix": key_prefix,
         "agent_id": agent_id,
