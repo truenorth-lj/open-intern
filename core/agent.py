@@ -717,7 +717,7 @@ class OpenInternAgent:
                 logger.info(f"Backed up sandbox to R2 for agent {self.agent_id}: {key}")
             else:
                 logger.warning(f"R2 backup returned no key for agent {self.agent_id}")
-        except Exception as e:
+        except (ImportError, ConnectionError, OSError) as e:
             logger.warning(f"R2 backup failed (non-fatal): {e}")
 
     def _restore_sandbox_from_r2(self) -> None:
@@ -733,7 +733,7 @@ class OpenInternAgent:
             restored = self._e2b_backend.restore_from_r2(r2)
             if restored:
                 logger.info(f"Restored sandbox from R2 backup for agent {self.agent_id}")
-        except Exception as e:
+        except (ImportError, ConnectionError, OSError) as e:
             logger.warning(f"R2 restore failed (non-fatal): {e}")
 
     @staticmethod

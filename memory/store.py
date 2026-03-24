@@ -307,7 +307,8 @@ class MemoryStore:
         """
         try:
             return self._recall_hybrid(query, scope, scope_id, limit)
-        except Exception as e:
+        except (sqlalchemy.exc.ProgrammingError, sqlalchemy.exc.OperationalError) as e:
+            # Column/table missing (migration not run) or DB connection issue
             logger.debug(f"Hybrid search unavailable, falling back to keyword: {e}")
             return self._recall_keyword(query, scope, scope_id, limit)
 
@@ -385,7 +386,7 @@ class MemoryStore:
             # pgvector requires {0.1, 0.2, ...} format (not Python's [0.1, 0.2, ...])
             params["embedding"] = "{" + ", ".join(map(str, embedding)) + "}"
             has_vector = True
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 — graceful degradation to BM25-only
             logger.debug(f"Embedding generation failed, using BM25 only: {e}")
             has_vector = False
 

@@ -113,7 +113,8 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
                 )
         heartbeat.start()
 
-    # Setup platform bots
+    # Setup platform bots (track failures for /health)
+    app.state.failed_platforms: list[str] = []
     config: AppConfig | None = getattr(app.state, "config", None)
     if config and mgr:
         for plat in ("telegram", "discord", "lark"):
@@ -121,6 +122,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
                 await _setup_platform_bots(app, config, mgr, plat)
             except Exception as e:
                 logger.warning(f"Failed to setup {plat} bots: {e}")
+                app.state.failed_platforms.append(plat)
 
     yield
 
@@ -237,13 +239,17 @@ def create_app(config: AppConfig) -> FastAPI:
         discord_bots: dict = getattr(app.state, "discord_bots", {})
         agent_count = len(mgr.agents) if mgr else 0
         scheduled_jobs = len(sched.list_jobs()) if sched else 0
-        return {
-            "status": "ok",
+        failed: list[str] = getattr(app.state, "failed_platforms", [])
+        result: dict = {
+            "status": "ok" if not failed else "degraded",
             "agents": agent_count,
             "telegram_bots": len(telegram_bots),
             "discord_bots": len(discord_bots),
             "scheduled_jobs": scheduled_jobs,
         }
+        if failed:
+            result["failed_platforms"] = failed
+        return result
 
     return app
 
