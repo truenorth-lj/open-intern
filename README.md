@@ -135,10 +135,10 @@ Open Intern was designed from the ground up to solve these problems:
 <tr><td><strong>Stability</strong></td>
 <td align="center">Production-grade FastAPI</td>
 <td align="center">Frequent gateway restarts, memory leaks (15K+ open issues)</td>
-<td align="center">Early stage (launched early 2026)</td></tr>
+<td align="center">Early stage</td></tr>
 
 <tr><td><strong>Agent Framework</strong></td>
-<td align="center"><a href="https://python.langchain.com/docs/concepts/agents/#deep-agents">LangChain Deep Agents</a></td>
+<td align="center"><a href="https://python.langchain.com/docs/concepts/agents/">LangChain Deep Agents</a></td>
 <td align="center">Custom gateway</td>
 <td align="center">Custom Rust runtime</td></tr>
 </tbody>
@@ -304,7 +304,7 @@ Other platforms require a separate deployment per agent. Open Intern runs **all 
 
 ### 4. Powered by LangChain Deep Agents
 
-Open Intern's agent core is built on [**LangChain Deep Agents**](https://python.langchain.com/docs/concepts/agents/#deep-agents) — a production-grade framework for agents that can reason over long horizons, use tools, and maintain state across complex multi-step tasks. This means:
+Open Intern's agent core is built on [**LangChain Deep Agents**](https://python.langchain.com/docs/concepts/agents/) — a production-grade framework for agents that can reason over long horizons, use tools, and maintain state across complex multi-step tasks. This means:
 
 - Battle-tested tool-calling and reasoning loop
 - Native support for streaming, retries, and structured outputs
@@ -363,8 +363,8 @@ Open Intern shares IronClaw's commitment to security (zero telemetry, full audit
 
 | Layer | Technology | Why |
 |-------|-----------|-----|
-| **Agent Core** | [LangChain Deep Agents](https://python.langchain.com/docs/concepts/agents/#deep-agents) + LangGraph | Production-grade reasoning loop with tool-calling, streaming, and state management |
-| **Backend** | Python 3.11+ · FastAPI | Async-first API harness, decoupled from agent runtime |
+| **Agent Core** | [LangChain Deep Agents](https://python.langchain.com/docs/concepts/agents/) + LangGraph | Production-grade reasoning loop with tool-calling, streaming, and state management |
+| **Harness** | Python 3.11+ · FastAPI | Async-first API layer, decoupled from agent runtime |
 | **Frontend** | Next.js 16 · React 19 · Tailwind CSS 4 | Modern multi-agent dashboard with server components |
 | **Database** | PostgreSQL 17 + pgvector | Structured data + vector search in one DB — no extra infra |
 | **Sandbox** | E2B · Fly.io · Cloudflare · Docker | Pluggable isolated runtimes — agent never touches host |
