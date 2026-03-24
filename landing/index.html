@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>open_intern — AI that actually works here</title>
+  <meta name="description" content="An open-source AI employee that joins your team as a real colleague. Self-hosted, enterprise-grade, with organizational memory.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧑‍💼</text></svg>">
+  <style>
+    /* Reset & Base */
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg: #fafaf8;
+      --fg: #1a1a1a;
+      --muted: #6b6b6b;
+      --border: #e8e6e1;
+      --accent: #2d2d2d;
+      --code-bg: #f0eeea;
+      --max-w: 720px;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: -apple-system, 'Helvetica Neue', 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--fg);
+      line-height: 1.7;
+      font-size: 16px;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Layout */
+    .container {
+      max-width: var(--max-w);
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    section {
+      padding: 80px 0;
+    }
+
+    /* Nav */
+    nav {
+      padding: 24px 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--border);
+    }
+
+    nav .logo {
+      font-size: 18px;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      color: var(--fg);
+      text-decoration: none;
+      font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    }
+
+    nav .links {
+      display: flex;
+      gap: 28px;
+      align-items: center;
+    }
+
+    nav .links a {
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 14px;
+      transition: color 0.2s;
+    }
+
+    nav .links a:hover { color: var(--fg); }
+
+    /* Hero */
+    .hero {
+      padding: 120px 0 80px;
+      text-align: center;
+    }
+
+    .hero h1 {
+      font-size: 42px;
+      font-weight: 600;
+      letter-spacing: -0.03em;
+      line-height: 1.2;
+      margin-bottom: 20px;
+    }
+
+    .hero p {
+      color: var(--muted);
+      font-size: 18px;
+      max-width: 480px;
+      margin: 0 auto 40px;
+      line-height: 1.6;
+    }
+
+    .hero .cta {
+      display: flex;
+      gap: 16px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 28px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      text-decoration: none;
+      transition: all 0.2s;
+    }
+
+    .btn-primary {
+      background: var(--fg);
+      color: var(--bg);
+    }
+
+    .btn-primary:hover {
+      background: #333;
+    }
+
+    .btn-secondary {
+      background: transparent;
+      color: var(--fg);
+      border: 1px solid var(--border);
+    }
+
+    .btn-secondary:hover {
+      border-color: var(--muted);
+    }
+
+    /* Divider */
+    .divider {
+      width: 40px;
+      height: 1px;
+      background: var(--border);
+      margin: 0 auto;
+    }
+
+    /* Section headers */
+    .section-label {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--muted);
+      margin-bottom: 12px;
+    }
+
+    h2 {
+      font-size: 28px;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      margin-bottom: 16px;
+    }
+
+    .section-desc {
+      color: var(--muted);
+      font-size: 16px;
+      margin-bottom: 48px;
+    }
+
+    /* Features */
+    .features {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 32px;
+    }
+
+    .feature {
+      padding: 28px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      transition: border-color 0.2s;
+    }
+
+    .feature:hover {
+      border-color: var(--muted);
+    }
+
+    .feature h3 {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+
+    .feature p {
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    /* Steps */
+    .steps {
+      display: flex;
+      flex-direction: column;
+      gap: 32px;
+    }
+
+    .step {
+      display: flex;
+      gap: 20px;
+      align-items: flex-start;
+    }
+
+    .step-num {
+      flex-shrink: 0;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      border: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--muted);
+    }
+
+    .step-content h3 {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    .step-content p {
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    /* Comparison */
+    .comparison-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+
+    .comparison-table th,
+    .comparison-table td {
+      padding: 14px 16px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .comparison-table th {
+      font-weight: 500;
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .comparison-table td:first-child {
+      color: var(--muted);
+    }
+
+    .comparison-table td:nth-child(2) {
+      font-weight: 500;
+    }
+
+    /* Code block */
+    .code-block {
+      background: var(--code-bg);
+      border-radius: 12px;
+      padding: 24px 28px;
+      font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+      font-size: 13px;
+      line-height: 1.8;
+      overflow-x: auto;
+      color: var(--fg);
+    }
+
+    .code-block .comment { color: var(--muted); }
+
+    /* Footer */
+    footer {
+      padding: 40px 0;
+      border-top: 1px solid var(--border);
+      text-align: center;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    footer a {
+      color: var(--muted);
+      text-decoration: none;
+    }
+
+    footer a:hover { color: var(--fg); }
+
+    /* Responsive */
+    @media (max-width: 640px) {
+      .hero h1 { font-size: 30px; }
+      .hero p { font-size: 16px; }
+      .features { grid-template-columns: 1fr; }
+      section { padding: 60px 0; }
+      .hero { padding: 80px 0 60px; }
+      .comparison-table { font-size: 13px; }
+      .comparison-table th, .comparison-table td { padding: 10px 8px; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <nav>
+      <a href="/" class="logo">open_intern</a>
+      <div class="links">
+        <a href="#features">Features</a>
+        <a href="#how-it-works">How it works</a>
+        <a href="#compare">Compare</a>
+        <a href="https://github.com/xLJxx/open-intern" target="_blank">GitHub</a>
+      </div>
+    </nav>
+  </div>
+
+  <!-- Hero -->
+  <div class="container">
+    <section class="hero">
+      <h1>An AI that actually<br>works here.</h1>
+      <p>Open-source AI employee that joins your team as a real colleague — with its own identity, memory, and judgment.</p>
+      <div class="cta">
+        <a href="#get-started" class="btn btn-primary">Get Started</a>
+        <a href="https://github.com/xLJxx/open-intern" target="_blank" class="btn btn-secondary">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+          GitHub
+        </a>
+      </div>
+    </section>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- Features -->
+  <div class="container">
+    <section id="features">
+      <p class="section-label">What it does</p>
+      <h2>Your AI teammate, not another chatbot.</h2>
+      <p class="section-desc">Open Intern lives in your team's communication channels and works alongside you — with persistent memory and enterprise-grade safety.</p>
+
+      <div class="features">
+        <div class="feature">
+          <h3>Multi-Platform</h3>
+          <p>Lives in Lark, Discord, Slack, or a web dashboard. Meets your team where they already work.</p>
+        </div>
+        <div class="feature">
+          <h3>Organizational Memory</h3>
+          <p>Three-layer memory (org, channel, personal) powered by pgvector. Remembers context like a real colleague.</p>
+        </div>
+        <div class="feature">
+          <h3>Multi-Agent Dashboard</h3>
+          <p>Manage all your AI agents from one unified interface. No more one-server-per-agent sprawl.</p>
+        </div>
+        <div class="feature">
+          <h3>Enterprise Safety</h3>
+          <p>Action classification, human approval workflows, and complete audit trails. Your policies, enforced.</p>
+        </div>
+        <div class="feature">
+          <h3>Elastic Scaling</h3>
+          <p>Scale to zero when idle, burst on demand. Sandboxed runtime means your data stays safe.</p>
+        </div>
+        <div class="feature">
+          <h3>Open Source</h3>
+          <p>MIT licensed. Self-hosted on your infrastructure. Zero telemetry. Full control, no lock-in.</p>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- How it works -->
+  <div class="container">
+    <section id="how-it-works">
+      <p class="section-label">How it works</p>
+      <h2>Up and running in minutes.</h2>
+      <p class="section-desc">Three steps from clone to colleague.</p>
+
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-content">
+            <h3>Deploy</h3>
+            <p>Clone the repo and run <code>docker compose up</code>. PostgreSQL, pgvector, and the agent start automatically.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-content">
+            <h3>Configure</h3>
+            <p>Run <code>open_intern init</code> to choose your platform, enter credentials, and define your agent's identity.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-content">
+            <h3>Collaborate</h3>
+            <p>Your AI teammate joins the channel. Mention it, DM it, or let it proactively engage — it remembers everything.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- Compare -->
+  <div class="container">
+    <section id="compare">
+      <p class="section-label">How it compares</p>
+      <h2>Built different.</h2>
+      <p class="section-desc">Open Intern is the enterprise AI teammate — not a personal assistant, not a CLI tool.</p>
+
+      <table class="comparison-table">
+        <thead>
+          <tr>
+            <th></th>
+            <th>Open Intern</th>
+            <th>OpenClaw</th>
+            <th>IronClaw</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Target</td>
+            <td>Teams & enterprises</td>
+            <td>Individual users</td>
+            <td>Privacy-focused devs</td>
+          </tr>
+          <tr>
+            <td>Memory</td>
+            <td>3-layer org memory</td>
+            <td>Per-user, flat</td>
+            <td>Single-user vector</td>
+          </tr>
+          <tr>
+            <td>Multi-Agent</td>
+            <td>Unified dashboard</td>
+            <td>One per instance</td>
+            <td>One per instance</td>
+          </tr>
+          <tr>
+            <td>Scaling</td>
+            <td>Elastic, scale to zero</td>
+            <td>One server each</td>
+            <td>One server each</td>
+          </tr>
+          <tr>
+            <td>Isolation</td>
+            <td>Sandboxed runtime</td>
+            <td>Runs on host</td>
+            <td>WASM sandbox</td>
+          </tr>
+          <tr>
+            <td>Telemetry</td>
+            <td>Zero</td>
+            <td>Opt-out</td>
+            <td>Zero</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- Get Started -->
+  <div class="container">
+    <section id="get-started">
+      <p class="section-label">Get started</p>
+      <h2>Start in 30 seconds.</h2>
+      <p class="section-desc">All you need is Docker.</p>
+
+      <div class="code-block">
+        <span class="comment"># Clone and start</span><br>
+        git clone https://github.com/xLJxx/open-intern.git<br>
+        cd open_intern<br>
+        docker compose up -d<br>
+        <br>
+        <span class="comment"># Initialize your agent</span><br>
+        open_intern init<br>
+        open_intern start
+      </div>
+    </section>
+  </div>
+
+  <!-- Footer -->
+  <div class="container">
+    <footer>
+      <p>open_intern — MIT License — <a href="https://github.com/xLJxx/open-intern" target="_blank">GitHub</a></p>
+    </footer>
+  </div>
+
+</body>
+</html>
