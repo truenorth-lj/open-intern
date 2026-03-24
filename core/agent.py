@@ -346,12 +346,11 @@ def _build_graph(
         """Call the LLM with the current messages."""
         messages = list(state["messages"])
 
-        # Ensure system prompt is first message
-        if not messages or not isinstance(messages[0], SystemMessage):
-            messages = [SystemMessage(content=system_prompt)] + messages
-        elif isinstance(messages[0], SystemMessage):
-            # Update system prompt in case skills changed
-            messages = [SystemMessage(content=system_prompt)] + messages[1:]
+        # Ensure exactly one system prompt as the first message.
+        # Strip all existing SystemMessages (compaction or prior runs may
+        # leave multiple scattered through the history) then prepend fresh.
+        messages = [m for m in messages if not isinstance(m, SystemMessage)]
+        messages = [SystemMessage(content=system_prompt)] + messages
 
         response = await llm_with_tools.ainvoke(messages)
         return {"messages": [response]}
