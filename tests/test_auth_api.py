@@ -8,10 +8,10 @@ import time
 import pytest
 from fastapi.testclient import TestClient
 
-# Set required env vars before importing
-os.environ.setdefault("AUTH_SECRET", "test-secret-for-jwt-signing-1234567890abcdef")
-os.environ.setdefault("DASHBOARD_PASSWORD", "admin-pass-123")
-os.environ.setdefault("ADMIN_EMAIL", "admin@test.com")
+# Force test env vars (override any sourced .env values)
+os.environ["AUTH_SECRET"] = "test-secret-for-jwt-signing-1234567890abcdef"
+os.environ["DASHBOARD_PASSWORD"] = "admin-pass-123"
+os.environ["ADMIN_EMAIL"] = "admin@test.com"
 os.environ.setdefault(
     "DATABASE_URL", "postgresql://open_intern:open_intern@localhost:5556/open_intern"
 )

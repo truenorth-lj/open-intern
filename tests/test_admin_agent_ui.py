@@ -34,7 +34,11 @@ def browser_context():
         page = context.new_page()
 
         # Login
-        page.goto(f"{BASE_URL}/login")
+        try:
+            page.goto(f"{BASE_URL}/login")
+        except Exception:
+            browser.close()
+            pytest.skip(f"Frontend not reachable at {BASE_URL}")
         page.fill('input[type="email"]', ADMIN_EMAIL)
         page.fill('input[type="password"]', ADMIN_PASSWORD)
         page.click('button[type="submit"]')
