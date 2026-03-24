@@ -359,8 +359,10 @@ OPENAI_API_KEY=sk-...
 
 | Guide | Description |
 |-------|-------------|
-| [Lark Bot Setup](docs/lark_setting.md) | Create a Lark (Feishu) bot app, configure permissions, and connect it to your agent |
-| [Sandbox File Browser](docs/file_browser.md) | Browse, read, edit, and create files in the agent's E2B sandbox from the dashboard |
+| [Dashboard Guide](docs/dashboard_guide.md) | Complete walkthrough of every dashboard page — agents, chat, memories, skills, usage, admin |
+| [Agent Settings](docs/agent_settings.md) | Configure identity, LLM model, platform connections, sandbox, and API keys |
+| [Sandbox File Browser](docs/file_browser.md) | Browse, read, edit, and create files in the agent's E2B sandbox |
+| [Lark Bot Setup](docs/lark_setting.md) | Create a Lark (Feishu) bot app, configure permissions, and connect it |
 
 ---
 
