@@ -144,7 +144,7 @@ class TestCronSchedulerAddJob:
         scheduler._engine.connect.return_value.__enter__ = MagicMock(return_value=conn)
         scheduler._engine.connect.return_value.__exit__ = MagicMock(return_value=False)
 
-        result = await scheduler.add_job(
+        result = scheduler.add_job(
             agent_id="agent-1",
             name="Test Job",
             schedule_type="interval",
@@ -170,7 +170,7 @@ class TestCronSchedulerRemoveJob:
         record = MagicMock(spec=ScheduledJobRecord)
         session.query.return_value.filter_by.return_value.first.return_value = record
 
-        result = await scheduler.remove_job("job-id")
+        result = scheduler.remove_job("job-id")
         assert result is True
         session.delete.assert_called_once_with(record)
 
@@ -178,7 +178,7 @@ class TestCronSchedulerRemoveJob:
         session = scheduler._mock_session
         session.query.return_value.filter_by.return_value.first.return_value = None
 
-        result = await scheduler.remove_job("nonexistent")
+        result = scheduler.remove_job("nonexistent")
         assert result is False
 
 
