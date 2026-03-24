@@ -54,6 +54,7 @@ class E2BSandboxBackend(SandboxBackendProtocol):
         self._api_key = api_key
         self._sandbox = None
         self._existing_sandbox_id = sandbox_id
+        self._reconnecting = False  # guard against infinite reconnect loops
 
     @property
     def id(self) -> str:
@@ -101,11 +102,45 @@ class E2BSandboxBackend(SandboxBackendProtocol):
         )
         logger.info(f"Created E2B sandbox {self._sandbox.sandbox_id} for agent {self._agent_id}")
 
+    # Errors that indicate the sandbox VM is dead and needs reconnection
+    _DEAD_SANDBOX_MARKERS = (
+        "not found",
+        "does not exist",
+        "sandbox is not running",
+        "sandbox is paused",
+        "connection refused",
+        "502",
+        "503",
+        "504",
+    )
+
+    def _is_sandbox_dead(self, error: Exception) -> bool:
+        """Check if an error indicates the sandbox VM is gone or unresponsive."""
+        if self._reconnecting:
+            return False  # already reconnecting, don't recurse
+        msg = str(error).lower()
+        return any(marker in msg for marker in self._DEAD_SANDBOX_MARKERS)
+
     def _ensure_sandbox(self):
         if self._sandbox is None:
             self.connect()
             logger.info(f"E2B sandbox connected (lazy): {self._sandbox.sandbox_id}")
         return self._sandbox
+
+    def _reconnect_sandbox(self) -> None:
+        """Force-reconnect by clearing stale sandbox and creating a new one."""
+        old_id = self._sandbox.sandbox_id if self._sandbox else self._existing_sandbox_id
+        logger.warning(f"Sandbox {old_id} is dead for agent {self._agent_id}, reconnecting...")
+        self._reconnecting = True
+        try:
+            self._sandbox = None
+            self._existing_sandbox_id = None
+            self.connect()
+            logger.info(
+                f"Reconnected to new sandbox {self._sandbox.sandbox_id} for agent {self._agent_id}"
+            )
+        finally:
+            self._reconnecting = False
 
     # --- Execute ---
 
@@ -135,6 +170,9 @@ class E2BSandboxBackend(SandboxBackendProtocol):
 
             return ExecuteResponse(output=output, exit_code=exit_code, truncated=truncated)
         except Exception as e:
+            if self._is_sandbox_dead(e):
+                self._reconnect_sandbox()
+                return self.execute(command, timeout=timeout)
             error_msg = str(e)
             if "timeout" in error_msg.lower():
                 return ExecuteResponse(
@@ -161,6 +199,9 @@ class E2BSandboxBackend(SandboxBackendProtocol):
                 for e in entries
             ]
         except Exception as e:
+            if self._is_sandbox_dead(e):
+                self._reconnect_sandbox()
+                return self.ls_info(path)
             logger.warning(f"E2B ls_info error: {e}")
             return []
 
@@ -180,6 +221,9 @@ class E2BSandboxBackend(SandboxBackendProtocol):
                 numbered.append(f"{i:>6}\t{line}")
             return "\n".join(numbered)
         except Exception as e:
+            if self._is_sandbox_dead(e):
+                self._reconnect_sandbox()
+                return self.read(file_path, offset, limit)
             return f"Error reading {file_path}: {e}"
 
     async def aread(self, file_path: str, offset: int = 0, limit: int = 2000) -> str:
@@ -191,6 +235,9 @@ class E2BSandboxBackend(SandboxBackendProtocol):
             sbx.files.write(file_path, content)
             return WriteResult(path=file_path)
         except Exception as e:
+            if self._is_sandbox_dead(e):
+                self._reconnect_sandbox()
+                return self.write(file_path, content)
             return WriteResult(error=str(e))
 
     async def awrite(self, file_path: str, content: str) -> WriteResult:
@@ -224,6 +271,9 @@ class E2BSandboxBackend(SandboxBackendProtocol):
             sbx.files.write(file_path, new_content)
             return EditResult(path=file_path, occurrences=count)
         except Exception as e:
+            if self._is_sandbox_dead(e):
+                self._reconnect_sandbox()
+                return self.edit(file_path, old_string, new_string, replace_all)
             return EditResult(error=str(e))
 
     async def aedit(
@@ -267,6 +317,9 @@ class E2BSandboxBackend(SandboxBackendProtocol):
                     )
             return matches
         except Exception as e:
+            if self._is_sandbox_dead(e):
+                self._reconnect_sandbox()
+                return self.grep_raw(pattern, path, glob)
             return f"Grep error: {e}"
 
     async def agrep_raw(
@@ -290,7 +343,10 @@ class E2BSandboxBackend(SandboxBackendProtocol):
             return [
                 FileInfo(path=p.strip(), is_dir=False) for p in stdout.splitlines() if p.strip()
             ][:100]  # limit results
-        except Exception:
+        except Exception as e:
+            if self._is_sandbox_dead(e):
+                self._reconnect_sandbox()
+                return self.glob_info(pattern, path)
             return []
 
     async def aglob_info(self, pattern: str, path: str = "/") -> list[FileInfo]:
