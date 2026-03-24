@@ -107,15 +107,10 @@ Open Intern was designed from the ground up to solve these problems:
 <td align="center">20+ channels (frequently breaking)</td>
 <td align="center">REPL, HTTP, Telegram, Slack</td></tr>
 
-<tr><td><strong>Self-Hosted</strong></td>
-<td align="center">Docker Compose, one command</td>
-<td align="center">Manual Node.js setup</td>
-<td align="center">Docker or Cargo build</td></tr>
-
 <tr><td><strong>Multi-Agent</strong></td>
-<td align="center">Coordinated agents with claim mechanism</td>
-<td align="center">Multi-agent routing (nascent)</td>
-<td align="center">Parallel jobs (isolated)</td></tr>
+<td align="center">Multiple agents on one service, unified dashboard</td>
+<td align="center">One agent per instance</td>
+<td align="center">One agent per instance</td></tr>
 
 <tr><td><strong>Runtime Isolation</strong></td>
 <td align="center">Sandboxed (E2B / Fly / Cloudflare / Docker)</td>
@@ -132,14 +127,9 @@ Open Intern was designed from the ground up to solve these problems:
 <td align="center">Opt-out</td>
 <td align="center">Zero</td></tr>
 
-<tr><td><strong>Stability</strong></td>
-<td align="center">Production-grade FastAPI</td>
-<td align="center">Frequent gateway restarts, memory leaks (15K+ open issues)</td>
-<td align="center">Early stage</td></tr>
-
 <tr><td><strong>Agent Framework</strong></td>
 <td align="center"><a href="https://python.langchain.com/docs/concepts/agents/">LangChain Deep Agents</a></td>
-<td align="center">Custom gateway</td>
+<td align="center"><a href="https://github.com/openclaw/openclaw/blob/main/docs/pi.md">Pi Agent Framework</a></td>
 <td align="center">Custom Rust runtime</td></tr>
 </tbody>
 </table>
@@ -336,26 +326,27 @@ Open Intern shares IronClaw's commitment to security (zero telemetry, full audit
 
 ## Features
 
-### Core (Shipping Now)
-
-- **Multi-platform IM** — Lark (Feishu), Discord, Slack adapters with thread support
-- **Web Dashboard** — Configure agent identity, LLM provider, permissions, and integrations from a browser
-- **Persistent Memory** — PostgreSQL + pgvector with 3-layer isolation (shared / channel / personal)
-- **Configurable Persona** — Name, role, personality, expertise areas, communication style
-- **LLM Provider Abstraction** — Claude, GPT-4, MiniMax, Ollama — switch with one config change
-- **Safety Middleware** — Action classification, human approval workflows, JSONL audit logging
-- **Sandbox File Browser** — Browse, read, edit, and create files in the agent's E2B sandbox from the dashboard
-- **CLI** — `open_intern init`, `start`, `status`, `logs`, `chat`
-- **Docker Compose** — One-command deploy with PostgreSQL + pgvector
-
-### Coming Next
-
-- **Proactive Heartbeat** — periodic scanning with configurable proactivity budget and quiet hours
-- **Knowledge Ingestion** — Notion, GitHub, Markdown docs into RAG pipeline
-- **Email Identity** — own Gmail/SMTP for sending client-facing emails
-- **GitHub Integration** — PR review, issue triage, branch management
-- **Multi-Agent Coordination** — claim mechanism, loop detection, shared context
-- **Calendar Awareness** — meeting prep, scheduling, follow-up automation
+| Status | Feature | Description |
+|--------|---------|-------------|
+| ✅ | **Multi-platform IM** | Lark (Feishu), Discord, Slack adapters with thread support |
+| ✅ | **Web Dashboard** | Configure agent identity, LLM provider, permissions, and integrations from a browser |
+| ✅ | **Persistent Memory** | PostgreSQL + pgvector with 3-layer isolation (shared / channel / personal) |
+| ✅ | **Configurable Persona** | Name, role, personality, expertise areas, communication style |
+| ✅ | **LLM Provider Abstraction** | Claude, GPT-4, MiniMax, Ollama — switch with one config change |
+| ✅ | **Safety Middleware** | Action classification, permission gating, JSONL audit logging |
+| ✅ | **Sandbox File Browser** | Browse, read, edit, and create files in the agent's E2B sandbox from the dashboard |
+| ✅ | **CLI** | `open_intern init`, `start`, `status`, `logs`, `chat` |
+| ✅ | **Docker Compose** | One-command deploy with PostgreSQL + pgvector |
+| ⬜ | **Proactive Heartbeat** | Periodic scanning with proactivity budget, confidence threshold, and quiet hours |
+| ⬜ | **Daily Summary** | Auto-generated end-of-day digest — what got done, what's stuck, what needs attention |
+| ⬜ | **Human Approval Workflow** | Chat-based approve/reject for write actions via reactions |
+| ⬜ | **Knowledge Ingestion** | Notion, GitHub, Markdown docs into RAG pipeline |
+| ⬜ | **Chat History Ingestion** | Import existing Lark/Discord conversations into organizational memory |
+| ⬜ | **Email Identity** | Own Gmail/SMTP address for sending client-facing emails |
+| ⬜ | **GitHub Integration** | PR review, issue triage, branch management |
+| ⬜ | **Multi-Agent Coordination** | Claim mechanism, loop detection, shared context |
+| ⬜ | **Calendar Awareness** | Meeting prep, scheduling, follow-up automation |
+| ⬜ | **Browser Automation** | Playwright-based web research, competitor analysis, data collection |
 
 ---
 
