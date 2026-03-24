@@ -86,9 +86,8 @@ export default function ScheduledJobsPage({
       // Track which templates are already installed
       const installed = new Set<string>();
       for (const job of data.jobs) {
-        const meta = (job as ScheduledJob & { metadata?: Record<string, string> }).metadata;
-        if (meta?.template_id) {
-          installed.add(meta.template_id);
+        if (job.metadata?.template_id) {
+          installed.add(job.metadata.template_id);
         }
       }
       setInstalledTemplateIds(installed);

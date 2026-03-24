@@ -1621,8 +1621,16 @@ async def install_job_template(template_id: str, body: JobTemplateInstall):
             metadata={"template_id": template_id},
         )
         return result
-    except Exception as e:
+    except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except Exception:
+        logger.exception(
+            "Failed to install template %s for agent %s",
+            template_id, body.agent_id,
+        )
+        raise HTTPException(
+            status_code=500, detail="Failed to install template"
+        )
 
 
 # --- Cost Guard ---

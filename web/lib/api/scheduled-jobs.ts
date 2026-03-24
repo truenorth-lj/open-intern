@@ -19,6 +19,7 @@ export interface ScheduledJob {
   last_run_status: "success" | "error" | null;
   last_run_error: string | null;
   next_run_at: string | null;
+  metadata?: Record<string, string>;
 }
 
 export async function listScheduledJobs(
