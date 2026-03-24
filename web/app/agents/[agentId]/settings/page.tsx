@@ -17,12 +17,10 @@ import {
   createApiKey,
   listApiKeys,
   revokeApiKey,
-  startDesktopStream,
-  stopDesktopStream,
-  getDesktopStream,
   type AgentInfo,
   type ApiKeyInfo,
 } from "@/lib/api";
+import { useDesktopStream } from "@/lib/use-desktop-stream";
 
 const LLM_PRESETS: Record<string, { provider: string; model: string }> = {
   "Claude Sonnet 4.6": { provider: "claude", model: "claude-sonnet-4-6" },
@@ -68,9 +66,7 @@ export default function AgentSettingsPage({
   const [testLoading, setTestLoading] = useState(false);
 
   // Desktop stream
-  const [streamUrl, setStreamUrl] = useState<string | null>(null);
-  const [streamLoading, setStreamLoading] = useState(false);
-  const [streamError, setStreamError] = useState("");
+  const stream = useDesktopStream(agentId);
 
   // API keys
   const [apiKeys, setApiKeys] = useState<ApiKeyInfo[]>([]);
@@ -84,8 +80,8 @@ export default function AgentSettingsPage({
     if (authLoading) return;
     loadAgent();
     loadApiKeys();
-    loadStreamStatus();
-  }, [authLoading, agentId]);
+    stream.loadStatus();
+  }, [authLoading, agentId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function loadAgent() {
     try {
@@ -119,42 +115,6 @@ export default function AgentSettingsPage({
       setApiKeys(data.api_keys);
     } catch {
       // ignore — may not have access
-    }
-  }
-
-  async function loadStreamStatus() {
-    try {
-      const data = await getDesktopStream(agentId);
-      if (data.active && data.stream_url) {
-        setStreamUrl(data.stream_url);
-      }
-    } catch {
-      // ignore — stream may not be available
-    }
-  }
-
-  async function handleStartStream() {
-    setStreamLoading(true);
-    setStreamError("");
-    try {
-      const data = await startDesktopStream(agentId);
-      setStreamUrl(data.stream_url);
-    } catch (err) {
-      setStreamError(err instanceof Error ? err.message : "Failed to start stream");
-    } finally {
-      setStreamLoading(false);
-    }
-  }
-
-  async function handleStopStream() {
-    setStreamLoading(true);
-    try {
-      await stopDesktopStream(agentId);
-      setStreamUrl(null);
-    } catch (err) {
-      setStreamError(err instanceof Error ? err.message : "Failed to stop stream");
-    } finally {
-      setStreamLoading(false);
     }
   }
 
@@ -532,11 +492,11 @@ export default function AgentSettingsPage({
             </p>
           </CardHeader>
           <CardContent className="space-y-4">
-            {streamError && (
-              <p className="text-sm text-destructive">{streamError}</p>
+            {stream.error && (
+              <p className="text-sm text-destructive">{stream.error}</p>
             )}
 
-            {streamUrl ? (
+            {stream.streamUrl ? (
               <>
                 <div className="flex items-center gap-2">
                   <Badge variant="outline" className="text-green-600 border-green-600">
@@ -545,22 +505,22 @@ export default function AgentSettingsPage({
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => window.open(streamUrl, "_blank")}
+                    onClick={() => window.open(stream.streamUrl!, "_blank")}
                   >
                     Open in New Tab
                   </Button>
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={handleStopStream}
-                    disabled={streamLoading}
+                    onClick={stream.stop}
+                    disabled={stream.loading}
                   >
-                    {streamLoading ? "Stopping..." : "Stop Stream"}
+                    {stream.loading ? "Stopping..." : "Stop Stream"}
                   </Button>
                 </div>
                 <div className="rounded-md border overflow-hidden bg-black">
                   <iframe
-                    src={streamUrl}
+                    src={stream.streamUrl}
                     className="w-full border-0"
                     style={{ height: "600px" }}
                     allow="clipboard-read; clipboard-write"
@@ -570,10 +530,10 @@ export default function AgentSettingsPage({
               </>
             ) : (
               <Button
-                onClick={handleStartStream}
-                disabled={streamLoading}
+                onClick={stream.start}
+                disabled={stream.loading}
               >
-                {streamLoading ? "Starting Desktop..." : "Launch Desktop"}
+                {stream.loading ? "Starting Desktop..." : "Launch Desktop"}
               </Button>
             )}
           </CardContent>
