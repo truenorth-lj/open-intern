@@ -64,3 +64,5 @@ export {
   triggerScheduledJob,
 } from "./scheduled-jobs";
 export type { ScheduledJob } from "./scheduled-jobs";
+export { listJobTemplates, installJobTemplate } from "./job-templates";
+export type { JobTemplate, InstallTemplateParams } from "./job-templates";

@@ -1534,6 +1534,104 @@ async def trigger_scheduled_job(job_id: str):
     return {"ok": True, "status": "triggered"}
 
 
+# --- Job Templates (Marketplace) ---
+
+# Pre-built job templates users can install with one click.
+# Each template defines a name, default schedule, prompt, and metadata.
+JOB_TEMPLATES: list[dict] = [
+    {
+        "id": "daily-summary",
+        "name": "Daily Summary",
+        "description": (
+            "End-of-day digest of conversations, actions, and status"
+            " — what got done, what's stuck, what needs attention."
+        ),
+        "category": "meta",
+        "default_schedule_type": "cron",
+        "default_schedule_expr": "0 18 * * *",
+        "default_timezone": "UTC",
+        "default_prompt": (
+            "Generate your daily summary for today. Review all conversations you had, "
+            "actions you took, and any scheduled jobs that ran. Produce a structured digest "
+            "with three sections: Done (completed items), Stuck (blocked items with reasons), "
+            "and Needs Attention (items requiring follow-up). Keep it concise and scannable."
+        ),
+        "default_isolated": True,
+        "skill": "daily-summary",
+    },
+]
+
+_TEMPLATE_INDEX: dict[str, dict] = {t["id"]: t for t in JOB_TEMPLATES}
+
+
+@router.get("/job-templates")
+def list_job_templates():
+    """List all available job templates from the marketplace."""
+    return {"templates": JOB_TEMPLATES}
+
+
+@router.get("/job-templates/{template_id}")
+def get_job_template(template_id: str):
+    """Get a single job template by ID."""
+    tpl = _TEMPLATE_INDEX.get(template_id)
+    if not tpl:
+        raise HTTPException(status_code=404, detail="Template not found")
+    return tpl
+
+
+class JobTemplateInstall(BaseModel):
+    agent_id: str
+    schedule_expr: str | None = None
+    timezone: str | None = None
+    prompt: str | None = None
+    delivery_platform: str = ""
+    delivery_chat_id: str = ""
+
+
+@router.post("/job-templates/{template_id}/install")
+async def install_job_template(template_id: str, body: JobTemplateInstall):
+    """Install a job template as a scheduled job for an agent."""
+    tpl = _TEMPLATE_INDEX.get(template_id)
+    if not tpl:
+        raise HTTPException(status_code=404, detail="Template not found")
+
+    scheduler = _get_scheduler()
+
+    # Check if agent already has this template installed (by name match)
+    existing = scheduler.list_jobs(agent_id=body.agent_id)
+    for job in existing:
+        meta = job.get("metadata", {})
+        if meta.get("template_id") == template_id:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Template '{tpl['name']}' is already installed for this agent",
+            )
+
+    try:
+        result = scheduler.add_job(
+            agent_id=body.agent_id,
+            name=tpl["name"],
+            schedule_type=tpl["default_schedule_type"],
+            schedule_expr=body.schedule_expr or tpl["default_schedule_expr"],
+            prompt=body.prompt or tpl["default_prompt"],
+            tz=body.timezone or tpl["default_timezone"],
+            delivery_platform=body.delivery_platform,
+            delivery_chat_id=body.delivery_chat_id,
+            isolated=tpl["default_isolated"],
+            metadata={"template_id": template_id},
+        )
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception:
+        logger.exception(
+            "Failed to install template %s for agent %s",
+            template_id,
+            body.agent_id,
+        )
+        raise HTTPException(status_code=500, detail="Failed to install template")
+
+
 # --- Cost Guard ---
 
 
