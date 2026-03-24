@@ -6,6 +6,7 @@ import asyncio
 import json
 import logging
 import threading
+import time
 
 import lark_oapi as lark
 from lark_oapi import ws as lark_ws
@@ -26,6 +27,8 @@ logger = logging.getLogger(__name__)
 LARK_DOMAIN = lark.LARK_DOMAIN
 FEISHU_DOMAIN = lark.FEISHU_DOMAIN
 
+_USER_NAME_CACHE_TTL = 3600  # 1 hour
+
 
 class LarkBot(Integration):
     """Lark/Feishu bot integration using WebSocket persistent connection."""
@@ -42,7 +45,7 @@ class LarkBot(Integration):
         self.app_secret = app_secret
         self._domain = domain or LARK_DOMAIN
         self._bot_open_id: str = ""
-        self._user_name_cache: dict[str, str] = {}
+        self._user_name_cache: dict[str, tuple[str, float]] = {}
         self._ws_thread: threading.Thread | None = None
 
         # API client for sending messages
@@ -94,9 +97,10 @@ class LarkBot(Integration):
             )
 
     async def _fetch_user_name(self, open_id: str) -> str:
-        """Fetch a user's display name via Contact API, with in-memory cache."""
-        if open_id in self._user_name_cache:
-            return self._user_name_cache[open_id]
+        """Fetch a user's display name via Contact API, with TTL cache."""
+        cached = self._user_name_cache.get(open_id)
+        if cached and (time.monotonic() - cached[1]) < _USER_NAME_CACHE_TTL:
+            return cached[0]
         try:
             from lark_oapi.api.contact.v3 import GetUserRequest
 
@@ -105,10 +109,10 @@ class LarkBot(Integration):
             if response.success() and response.data and response.data.user:
                 name = response.data.user.name or ""
                 if name:
-                    self._user_name_cache[open_id] = name
+                    self._user_name_cache[open_id] = (name, time.monotonic())
                     return name
         except Exception:
-            logger.debug(f"Could not fetch user name for {open_id}", exc_info=True)
+            logger.warning(f"Could not fetch user name for {open_id}", exc_info=True)
         return ""
 
     async def start(self) -> None:

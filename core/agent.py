@@ -664,6 +664,19 @@ class OpenInternAgent:
         except Exception as e:
             logger.warning(f"R2 restore failed (non-fatal): {e}")
 
+    @staticmethod
+    def _enrich_message(message: str, context: dict) -> str:
+        """Prepend platform context to a user message."""
+        if context.get("channel_id") and context.get("platform") != "web":
+            return (
+                f"[Context: channel={context.get('channel_id', '')}, "
+                f"user_id={context.get('user_id', '')}, "
+                f"user_name={context.get('user_name', 'unknown')}, "
+                f"platform={context.get('platform', 'unknown')}]\n\n"
+                f"{message}"
+            )
+        return message
+
     async def chat(
         self,
         message: str,
@@ -706,16 +719,7 @@ class OpenInternAgent:
                 input_tokens=0, output_tokens=0, total_tokens=0
             )
 
-        # Build context-aware message
-        enriched_message = message
-        if context.get("channel_id") and context.get("platform") != "web":
-            enriched_message = (
-                f"[Context: channel={context.get('channel_id', '')}, "
-                f"user_id={context.get('user_id', '')}, "
-                f"user_name={context.get('user_name', 'unknown')}, "
-                f"platform={context.get('platform', 'unknown')}]\n\n"
-                f"{message}"
-            )
+        enriched_message = self._enrich_message(message, context)
 
         invoke_config = {}
         if thread_id:
@@ -789,15 +793,7 @@ class OpenInternAgent:
             }
             return
 
-        enriched_message = message
-        if context.get("channel_id") and context.get("platform") != "web":
-            enriched_message = (
-                f"[Context: channel={context.get('channel_id', '')}, "
-                f"user_id={context.get('user_id', '')}, "
-                f"user_name={context.get('user_name', 'unknown')}, "
-                f"platform={context.get('platform', 'unknown')}]\n\n"
-                f"{message}"
-            )
+        enriched_message = self._enrich_message(message, context)
 
         invoke_config = {}
         if thread_id:
