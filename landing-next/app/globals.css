@@ -1,0 +1,83 @@
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --bg: #fafaf8;
+  --fg: #1a1a1a;
+  --muted: #6b6b6b;
+  --border: #e8e6e1;
+  --accent: #2d2d2d;
+  --code-bg: #f0eeea;
+  --max-w: 720px;
+}
+
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: -apple-system, 'Helvetica Neue', 'Segoe UI', sans-serif;
+  background: var(--bg);
+  color: var(--fg);
+  line-height: 1.7;
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+}
+
+.container { max-width: var(--max-w); margin: 0 auto; padding: 0 24px; }
+section { padding: 80px 0; }
+
+nav { padding: 24px 0; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); }
+nav .logo { font-size: 18px; font-weight: 600; letter-spacing: -0.02em; color: var(--fg); text-decoration: none; font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace; }
+nav .links { display: flex; gap: 28px; align-items: center; }
+nav .links a { color: var(--muted); text-decoration: none; font-size: 14px; transition: color 0.2s; }
+nav .links a:hover { color: var(--fg); }
+
+.hero { padding: 120px 0 80px; text-align: center; }
+.hero h1 { font-size: 42px; font-weight: 600; letter-spacing: -0.03em; line-height: 1.2; margin-bottom: 20px; }
+.hero p { color: var(--muted); font-size: 18px; max-width: 480px; margin: 0 auto 40px; line-height: 1.6; }
+.hero .cta { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; }
+
+.btn { display: inline-flex; align-items: center; gap: 8px; padding: 12px 28px; border-radius: 8px; font-size: 14px; font-weight: 500; text-decoration: none; transition: all 0.2s; }
+.btn-primary { background: var(--fg); color: var(--bg); }
+.btn-primary:hover { background: #333; }
+.btn-secondary { background: transparent; color: var(--fg); border: 1px solid var(--border); }
+.btn-secondary:hover { border-color: var(--muted); }
+
+.divider { width: 40px; height: 1px; background: var(--border); margin: 0 auto; }
+
+.section-label { font-size: 12px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); margin-bottom: 12px; }
+h2 { font-size: 28px; font-weight: 600; letter-spacing: -0.02em; margin-bottom: 16px; }
+.section-desc { color: var(--muted); font-size: 16px; margin-bottom: 48px; }
+
+.features { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; }
+.feature { padding: 28px; border: 1px solid var(--border); border-radius: 12px; transition: border-color 0.2s; }
+.feature:hover { border-color: var(--muted); }
+.feature h3 { font-size: 16px; font-weight: 600; margin-bottom: 8px; }
+.feature p { color: var(--muted); font-size: 14px; line-height: 1.6; }
+
+.steps { display: flex; flex-direction: column; gap: 32px; }
+.step { display: flex; gap: 20px; align-items: flex-start; }
+.step-num { flex-shrink: 0; width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 500; color: var(--muted); }
+.step-content h3 { font-size: 16px; font-weight: 600; margin-bottom: 4px; }
+.step-content p { color: var(--muted); font-size: 14px; }
+
+.comparison-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.comparison-table th, .comparison-table td { padding: 14px 16px; text-align: left; border-bottom: 1px solid var(--border); }
+.comparison-table th { font-weight: 500; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; }
+.comparison-table td:first-child { color: var(--muted); }
+.comparison-table td:nth-child(2) { font-weight: 500; }
+
+.code-block { background: var(--code-bg); border-radius: 12px; padding: 24px 28px; font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace; font-size: 13px; line-height: 1.8; overflow-x: auto; color: var(--fg); }
+.code-block .comment { color: var(--muted); }
+
+footer { padding: 40px 0; border-top: 1px solid var(--border); text-align: center; color: var(--muted); font-size: 13px; }
+footer a { color: var(--muted); text-decoration: none; }
+footer a:hover { color: var(--fg); }
+
+@media (max-width: 640px) {
+  .hero h1 { font-size: 30px; }
+  .hero p { font-size: 16px; }
+  .features { grid-template-columns: 1fr; }
+  section { padding: 60px 0; }
+  .hero { padding: 80px 0 60px; }
+  .comparison-table { font-size: 13px; }
+  .comparison-table th, .comparison-table td { padding: 10px 8px; }
+}

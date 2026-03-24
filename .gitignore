@@ -25,3 +25,8 @@ Thumbs.db
 
 # Subtitle files (research artifacts)
 *.srt
+
+# Next.js (landing-next)
+landing-next/.next/
+landing-next/node_modules/
+landing-next/.vercel/
