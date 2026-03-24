@@ -7,7 +7,19 @@ and the sandbox backend (E2B, local shell, etc.).
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import Enum
 from typing import Protocol, runtime_checkable
+
+
+class SandboxStatus(str, Enum):
+    """Canonical sandbox lifecycle states.
+
+    Used by the status API so frontend and backend always agree on state.
+    """
+
+    RUNNING = "running"
+    PAUSED = "paused"
+    STOPPED = "stopped"
 
 
 @dataclass

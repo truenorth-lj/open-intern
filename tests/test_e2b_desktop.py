@@ -154,15 +154,19 @@ class TestDesktopGUIControl:
 
 class TestDesktopLifecycle:
     def test_pause_stops_stream_first(self, backend):
-        backend._sandbox = MagicMock()
+        mock_sbx = MagicMock()
+        backend._sandbox = mock_sbx
         backend._stream_url = "https://stream.e2b.dev/vnc"
-        backend._sandbox.pause.return_value = "sbx-123"
+        mock_sbx.pause.return_value = "sbx-123"
 
         sandbox_id = backend.pause()
 
-        backend._sandbox.stream.stop.assert_called_once()
+        # stream.stop() should have been called before sandbox was paused
+        mock_sbx.stream.stop.assert_called_once()
         assert backend.stream_url is None
         assert sandbox_id == "sbx-123"
+        # base pause() clears _sandbox
+        assert backend._sandbox is None
 
     def test_kill_stops_stream_first(self, backend):
         mock_sbx = MagicMock()

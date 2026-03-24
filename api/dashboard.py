@@ -204,6 +204,50 @@ async def reload_agent(agent_id: str, admin: dict = Depends(require_admin)):
     return {"ok": True, "agent_id": agent_id, "status": "reloaded"}
 
 
+@router.get("/agents/{agent_id}/sandbox/status")
+async def sandbox_status(agent_id: str, user: dict = Depends(get_current_user)):
+    """Return the canonical sandbox status for the given agent."""
+    accessible = get_user_accessible_agents(user)
+    if accessible is not None and agent_id not in accessible:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    mgr = _get_manager()
+    agent = mgr.get(agent_id)
+    if not agent:
+        raise HTTPException(status_code=404, detail=f"Agent '{agent_id}' not found")
+
+    from core.backend_types import SandboxStatus
+    from core.e2b_desktop_backend import E2BDesktopBackend
+
+    backend = agent._e2b_backend
+    ssh_backend = getattr(agent, "_ssh_backend", None)
+
+    # Determine backend type and status
+    if backend is not None:
+        status = backend.status
+        backend_type = "e2b_desktop" if isinstance(backend, E2BDesktopBackend) else "e2b"
+        sandbox_id = backend.id
+        stream_url = backend.stream_url if isinstance(backend, E2BDesktopBackend) else None
+    elif ssh_backend is not None:
+        status = SandboxStatus.RUNNING  # SSH is always "running" if configured
+        backend_type = "ssh"
+        sandbox_id = None
+        stream_url = None
+    else:
+        status = SandboxStatus.STOPPED
+        backend_type = None
+        sandbox_id = None
+        stream_url = None
+
+    return {
+        "status": status.value,
+        "sandbox_id": sandbox_id,
+        "backend_type": backend_type,
+        "stream_active": stream_url is not None,
+        "stream_url": stream_url,
+    }
+
+
 @router.post("/agents/{agent_id}/sandbox/pause")
 async def pause_sandbox(agent_id: str, user: dict = Depends(get_current_user)):
     """Pause the agent's E2B sandbox, preserving its state for later resume."""

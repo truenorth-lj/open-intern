@@ -25,7 +25,7 @@ import {
   type ApiKeyInfo,
   type BackupEntry,
 } from "@/lib/api";
-import { useDesktopStream } from "@/lib/use-desktop-stream";
+import { useSandboxStatus } from "@/lib/use-sandbox-status";
 
 const LLM_PRESETS: Record<string, { provider: string; model: string }> = {
   "Claude Sonnet 4.6": { provider: "claude", model: "claude-sonnet-4-6" },
@@ -74,8 +74,8 @@ export default function AgentSettingsPage({
   const [testMsg, setTestMsg] = useState("");
   const [testLoading, setTestLoading] = useState(false);
 
-  // Desktop stream
-  const stream = useDesktopStream(agentId);
+  // Sandbox status (unified — polls backend every 30s)
+  const sandbox = useSandboxStatus(agentId);
 
   // API keys
   const [apiKeys, setApiKeys] = useState<ApiKeyInfo[]>([]);
@@ -95,7 +95,6 @@ export default function AgentSettingsPage({
     loadAgent();
     loadApiKeys();
     loadBackups();
-    stream.loadStatus();
   }, [authLoading, agentId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function loadAgent() {
@@ -633,11 +632,11 @@ export default function AgentSettingsPage({
                   </p>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  {stream.error && (
-                    <p className="text-sm text-destructive">{stream.error}</p>
+                  {sandbox.error && (
+                    <p className="text-sm text-destructive">{sandbox.error}</p>
                   )}
 
-                  {stream.streamUrl ? (
+                  {sandbox.status === "running" && sandbox.streamUrl ? (
                     <>
                       <div className="flex items-center gap-2">
                         <Badge variant="outline" className="text-green-600 border-green-600">
@@ -646,23 +645,23 @@ export default function AgentSettingsPage({
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => window.open(stream.streamUrl!, "_blank")}
+                          onClick={() => window.open(sandbox.streamUrl!, "_blank")}
                         >
                           Open in New Tab
                         </Button>
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={stream.pause}
-                          disabled={stream.loading}
+                          onClick={sandbox.pause}
+                          disabled={sandbox.loading}
                         >
-                          {stream.loading ? "Pausing..." : "Pause (keep data)"}
+                          {sandbox.loading ? "Pausing..." : "Pause (keep data)"}
                         </Button>
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={stream.stop}
-                          disabled={stream.loading}
+                          onClick={sandbox.stop}
+                          disabled={sandbox.loading}
                         >
                           Stop &amp; Destroy
                         </Button>
@@ -672,7 +671,7 @@ export default function AgentSettingsPage({
                       </p>
                       <div className="rounded-md border overflow-hidden bg-black">
                         <iframe
-                          src={stream.streamUrl}
+                          src={sandbox.streamUrl}
                           className="w-full border-0"
                           style={{ height: "600px" }}
                           allow="clipboard-read; clipboard-write"
@@ -680,7 +679,40 @@ export default function AgentSettingsPage({
                         />
                       </div>
                     </>
-                  ) : stream.sandboxStatus === "paused" ? (
+                  ) : sandbox.status === "running" ? (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="text-green-600 border-green-600">
+                          Running
+                        </Badge>
+                        <span className="text-sm text-muted-foreground">
+                          Sandbox is running but stream is not active.
+                        </span>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          onClick={sandbox.start}
+                          disabled={sandbox.loading}
+                        >
+                          {sandbox.loading ? "Starting Stream..." : "Start Stream"}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={sandbox.pause}
+                          disabled={sandbox.loading}
+                        >
+                          Pause (keep data)
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={sandbox.stop}
+                          disabled={sandbox.loading}
+                        >
+                          Stop &amp; Destroy
+                        </Button>
+                      </div>
+                    </div>
+                  ) : sandbox.status === "paused" ? (
                     <div className="space-y-2">
                       <div className="flex items-center gap-2">
                         <Badge variant="outline" className="text-yellow-600 border-yellow-600">
@@ -692,15 +724,15 @@ export default function AgentSettingsPage({
                       </div>
                       <div className="flex gap-2">
                         <Button
-                          onClick={stream.resume}
-                          disabled={stream.loading}
+                          onClick={sandbox.resume}
+                          disabled={sandbox.loading}
                         >
-                          {stream.loading ? "Resuming..." : "Resume Desktop"}
+                          {sandbox.loading ? "Resuming..." : "Resume Desktop"}
                         </Button>
                         <Button
                           variant="outline"
-                          onClick={stream.stop}
-                          disabled={stream.loading}
+                          onClick={sandbox.stop}
+                          disabled={sandbox.loading}
                         >
                           Destroy Sandbox
                         </Button>
@@ -708,10 +740,10 @@ export default function AgentSettingsPage({
                     </div>
                   ) : (
                     <Button
-                      onClick={stream.start}
-                      disabled={stream.loading}
+                      onClick={sandbox.start}
+                      disabled={sandbox.loading}
                     >
-                      {stream.loading ? "Starting Desktop..." : "Launch Desktop"}
+                      {sandbox.loading ? "Starting Desktop..." : "Launch Desktop"}
                     </Button>
                   )}
 
@@ -723,7 +755,7 @@ export default function AgentSettingsPage({
                         variant="outline"
                         size="sm"
                         onClick={handleBackup}
-                        disabled={backupLoading || !stream.streamUrl}
+                        disabled={backupLoading || sandbox.status !== "running"}
                       >
                         {backupLoading ? "Backing up..." : "Backup Now"}
                       </Button>

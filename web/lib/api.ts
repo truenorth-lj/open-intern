@@ -445,6 +445,29 @@ export async function permanentlyDeleteAgent(agentId: string) {
   return res.json();
 }
 
+// --- Sandbox Status ---
+
+export type SandboxStatusValue = "running" | "paused" | "stopped";
+
+export interface SandboxStatusResponse {
+  status: SandboxStatusValue;
+  sandbox_id: string | null;
+  backend_type: "e2b_desktop" | "e2b" | "ssh" | null;
+  stream_active: boolean;
+  stream_url: string | null;
+}
+
+export async function getSandboxStatus(
+  agentId: string,
+): Promise<SandboxStatusResponse> {
+  const res = await apiFetch(`/agents/${agentId}/sandbox/status`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(extractErrorMessage(err, "Failed to get sandbox status"));
+  }
+  return res.json();
+}
+
 // --- Sandbox Lifecycle ---
 
 export async function pauseSandbox(

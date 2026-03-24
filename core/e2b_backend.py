@@ -16,6 +16,7 @@ from core.backend_types import (
     FileUploadResponse,
     GrepMatch,
     SandboxBackendProtocol,
+    SandboxStatus,
     WriteResult,
 )
 
@@ -68,6 +69,15 @@ class E2BSandboxBackend(SandboxBackendProtocol):
         if self._sandbox:
             return self._sandbox.sandbox_id
         return self._existing_sandbox_id or f"e2b-{self._agent_id}-pending"
+
+    @property
+    def status(self) -> SandboxStatus:
+        """Derive the current sandbox status from internal state."""
+        if self._sandbox is not None:
+            return SandboxStatus.RUNNING
+        if self._existing_sandbox_id is not None:
+            return SandboxStatus.PAUSED
+        return SandboxStatus.STOPPED
 
     def connect(self) -> None:
         """Create or resume an E2B sandbox."""
