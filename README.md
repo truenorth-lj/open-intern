@@ -344,9 +344,12 @@ Open Intern shares IronClaw's commitment to security (zero telemetry, full audit
 | ⬜ | **Chat History Ingestion** | Import existing Lark/Discord conversations into organizational memory |
 | ⬜ | **Email Identity** | Own Gmail/SMTP address for sending client-facing emails |
 | ⬜ | **GitHub Integration** | PR review, issue triage, branch management |
-| ⬜ | **Multi-Agent Coordination** | Claim mechanism, loop detection, shared context |
 | ⬜ | **Calendar Awareness** | Meeting prep, scheduling, follow-up automation |
+| ⬜ | **OAuth Connection Manager** | Manage credentials for all connected tools |
+| ⬜ | **Multi-Agent Coordination** | Claim mechanism, loop detection, shared context |
 | ⬜ | **Browser Automation** | Playwright-based web research, competitor analysis, data collection |
+| ⬜ | **Meeting Participation** | Join Zoom/Meet via transcription, take notes, send follow-ups |
+| ⬜ | **Plugin Marketplace** | Community-contributed integrations (Linear, Jira, HubSpot, etc.) |
 
 ---
 
