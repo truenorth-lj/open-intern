@@ -1626,11 +1626,10 @@ async def install_job_template(template_id: str, body: JobTemplateInstall):
     except Exception:
         logger.exception(
             "Failed to install template %s for agent %s",
-            template_id, body.agent_id,
+            template_id,
+            body.agent_id,
         )
-        raise HTTPException(
-            status_code=500, detail="Failed to install template"
-        )
+        raise HTTPException(status_code=500, detail="Failed to install template")
 
 
 # --- Cost Guard ---
