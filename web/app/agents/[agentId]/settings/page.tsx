@@ -512,12 +512,23 @@ export default function AgentSettingsPage({
                   <Button
                     variant="outline"
                     size="sm"
+                    onClick={stream.pause}
+                    disabled={stream.loading}
+                  >
+                    {stream.loading ? "Pausing..." : "Pause (keep data)"}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
                     onClick={stream.stop}
                     disabled={stream.loading}
                   >
-                    {stream.loading ? "Stopping..." : "Stop Stream"}
+                    Stop &amp; Destroy
                   </Button>
                 </div>
+                <p className="text-xs text-muted-foreground">
+                  Pause preserves sandbox state (files, installed packages). Stop destroys everything.
+                </p>
                 <div className="rounded-md border overflow-hidden bg-black">
                   <iframe
                     src={stream.streamUrl}
@@ -528,6 +539,32 @@ export default function AgentSettingsPage({
                   />
                 </div>
               </>
+            ) : stream.sandboxStatus === "paused" ? (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="text-yellow-600 border-yellow-600">
+                    Paused
+                  </Badge>
+                  <span className="text-sm text-muted-foreground">
+                    Sandbox is paused. Files and state are preserved.
+                  </span>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    onClick={stream.resume}
+                    disabled={stream.loading}
+                  >
+                    {stream.loading ? "Resuming..." : "Resume Desktop"}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={stream.stop}
+                    disabled={stream.loading}
+                  >
+                    Destroy Sandbox
+                  </Button>
+                </div>
+              </div>
             ) : (
               <Button
                 onClick={stream.start}

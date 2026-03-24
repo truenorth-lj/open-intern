@@ -209,35 +209,47 @@ class OpenInternAgent:
         self._postgres_store.setup()
         logger.info("PostgresStore ready")
 
-        # Seed skills from disk into PostgresStore
+        # Seed skills from disk into PostgresStore (used by none mode and as source for E2B seeding)
         from scripts.seed_skills import seed_skills
 
         n = seed_skills(self._postgres_store, agent_id=self.agent_id)
         if n:
             logger.info(f"Seeded {n} skill file(s) into store")
 
-        # Create backend: CompositeBackend
-        # - Files (read/write/edit/grep/glob) → StoreBackend → PostgreSQL (persistent)
-        # - Shell execution (execute) → E2B sandbox or LocalShellBackend
-        from deepagents.backends.composite import CompositeBackend
-        from deepagents.backends.store import StoreBackend
-
+        # Create backend based on sandbox mode
         shell_backend = self._create_shell_backend()
 
-        _agent_id = self.agent_id
+        if self.sandbox_mode in ("base", "desktop") and self._e2b_backend is not None:
+            # E2B mode: use E2B directly for ALL operations (files + shell)
+            # No CompositeBackend — agent works in a single unified environment
+            _backend = shell_backend
 
-        def _backend_factory(rt):
-            return CompositeBackend(
-                default=shell_backend,
-                routes={
-                    "/": StoreBackend(
-                        rt,
-                        namespace=lambda ctx: ("agent", _agent_id, "filesystem"),
-                    ),
-                },
-            )
+            def _backend_factory(rt):
+                return _backend
 
-        logger.info("Backend ready (CompositeBackend: StoreBackend + LocalShellBackend)")
+            # Seed skills into E2B sandbox filesystem
+            self._seed_skills_to_sandbox()
+
+            logger.info("Backend ready (E2B unified — files + shell in sandbox)")
+        else:
+            # None/fallback mode: CompositeBackend with StoreBackend for files
+            from deepagents.backends.composite import CompositeBackend
+            from deepagents.backends.store import StoreBackend
+
+            _agent_id = self.agent_id
+
+            def _backend_factory(rt):
+                return CompositeBackend(
+                    default=shell_backend,
+                    routes={
+                        "/": StoreBackend(
+                            rt,
+                            namespace=lambda ctx: ("agent", _agent_id, "filesystem"),
+                        ),
+                    },
+                )
+
+            logger.info("Backend ready (CompositeBackend: StoreBackend + LocalShellBackend)")
 
         # Create the Deep Agent
         from deepagents import create_deep_agent
@@ -307,6 +319,34 @@ class OpenInternAgent:
             virtual_mode=True,
             inherit_env=True,
         )
+
+    def _seed_skills_to_sandbox(self) -> None:
+        """Copy skill files from disk into the E2B sandbox filesystem."""
+        if self._e2b_backend is None:
+            return
+
+        skills_dir = Path(__file__).resolve().parent.parent / "skills"
+        if not skills_dir.exists():
+            logger.warning(f"Skills directory not found: {skills_dir}")
+            return
+
+        files_to_upload: list[tuple[str, bytes]] = []
+        for skill_dir in sorted(skills_dir.iterdir()):
+            if not skill_dir.is_dir() or skill_dir.name.startswith((".", "_")):
+                continue
+            for file_path in sorted(skill_dir.rglob("*")):
+                if not file_path.is_file() or file_path.stat().st_size > 1_000_000:
+                    continue
+                relative = file_path.relative_to(skills_dir)
+                sandbox_path = f"/home/user/skills/{relative.as_posix()}"
+                content = file_path.read_bytes()
+                files_to_upload.append((sandbox_path, content))
+
+        if files_to_upload:
+            # Ensure skills directory exists in sandbox
+            self._e2b_backend.execute("mkdir -p /home/user/skills")
+            self._e2b_backend.upload_files(files_to_upload)
+            logger.info(f"Seeded {len(files_to_upload)} skill file(s) into E2B sandbox")
 
     async def chat(
         self, message: str, context: ChatContext | None = None, thread_id: str | None = None

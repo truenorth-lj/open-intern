@@ -437,6 +437,34 @@ export async function permanentlyDeleteAgent(agentId: string) {
   return res.json();
 }
 
+// --- Sandbox Lifecycle ---
+
+export async function pauseSandbox(
+  agentId: string,
+): Promise<{ ok: boolean; sandbox_id: string; status: string }> {
+  const res = await apiFetch(`/agents/${agentId}/sandbox/pause`, {
+    method: "POST",
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(extractErrorMessage(err, "Failed to pause sandbox"));
+  }
+  return res.json();
+}
+
+export async function resumeSandbox(
+  agentId: string,
+): Promise<{ ok: boolean; sandbox_id: string; status: string }> {
+  const res = await apiFetch(`/agents/${agentId}/sandbox/resume`, {
+    method: "POST",
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(extractErrorMessage(err, "Failed to resume sandbox"));
+  }
+  return res.json();
+}
+
 // --- Desktop Stream ---
 
 export async function startDesktopStream(
