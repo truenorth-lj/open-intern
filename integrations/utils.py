@@ -31,5 +31,5 @@ def chunk_message(content: str, max_size: int) -> list[str]:
         else:
             # Split at newline: consume the newline itself
             chunks.append(remaining[:split_at])
-            remaining = remaining[split_at + 1:]  # skip the \n
+            remaining = remaining[split_at + 1 :]  # skip the \n
     return chunks
