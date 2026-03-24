@@ -9,7 +9,7 @@ import logging
 import secrets
 import time
 from base64 import urlsafe_b64decode, urlsafe_b64encode
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import uuid4
 
@@ -33,22 +33,26 @@ JWT_EXPIRY_SECONDS = 60 * 60 * 24 * 7  # 7 days
 
 # Admin credentials (populated by init_auth)
 _admin_email = "admin@open-intern.local"
-_admin_password = ""
+_admin_password_hash = ""  # PBKDF2 hash, never store plain-text
 
 
 def init_auth(config: AppConfig) -> None:
     """Initialize auth with AppConfig (reads .env via pydantic-settings)."""
-    global _session_factory, JWT_SECRET, _admin_email, _admin_password
+    global _session_factory, JWT_SECRET, _admin_email, _admin_password_hash
     _session_factory = get_session_factory(config.database_url)
     JWT_SECRET = config.auth_secret
     _admin_email = config.admin_email
-    _admin_password = config.dashboard_password
+    # Hash the admin password at init time so we never compare plain-text
+    if config.dashboard_password:
+        _admin_password_hash = _hash_password(config.dashboard_password)
+    else:
+        _admin_password_hash = ""
     if not JWT_SECRET:
         logger.warning(
             "AUTH_SECRET not set — authentication will fail. "
             "Set AUTH_SECRET environment variable before using the dashboard."
         )
-    if not _admin_password:
+    if not config.dashboard_password:
         logger.warning("DASHBOARD_PASSWORD not configured; admin login disabled")
 
 
@@ -122,6 +126,9 @@ def _authenticate_api_key(raw_key: str) -> dict | None:
         record = session.query(ApiKeyRecord).filter_by(key_hash=key_hash, is_active=True).first()
         if not record:
             return None
+        # Check expiry
+        if record.expires_at and record.expires_at < datetime.now(timezone.utc):
+            return None
         # Update last_used_at
         record.last_used_at = datetime.now(timezone.utc)
         session.commit()
@@ -180,8 +187,13 @@ class LoginResponse(BaseModel):
 
 @router.post("/login", response_model=LoginResponse)
 def login(body: LoginRequest):
-    # Check admin login
-    if body.email == _admin_email and _admin_password and body.password == _admin_password:
+    # Check admin login (constant-time comparison for both email and password)
+    is_admin = (
+        secrets.compare_digest(body.email, _admin_email)
+        and _admin_password_hash
+        and _verify_password(body.password, _admin_password_hash)
+    )
+    if is_admin:
         payload = {
             "user_id": "admin",
             "email": _admin_email,
@@ -392,6 +404,7 @@ def get_user_accessible_agents(user: dict) -> list[str] | None:
 
 class ApiKeyCreate(BaseModel):
     name: str = ""
+    expires_in_days: int | None = None  # None = never expires
 
 
 @router.post("/agents/{agent_id}/api-keys")
@@ -410,6 +423,10 @@ def create_api_key(agent_id: str, body: ApiKeyCreate, admin: dict = Depends(requ
     key_prefix = raw_key[:11]  # "oi_" + first 8 chars
     now = datetime.now(timezone.utc)
 
+    expires_at = None
+    if body.expires_in_days is not None:
+        expires_at = now + timedelta(days=body.expires_in_days)
+
     record_id = str(uuid4())
     record = ApiKeyRecord(
         id=record_id,
@@ -419,6 +436,7 @@ def create_api_key(agent_id: str, body: ApiKeyCreate, admin: dict = Depends(requ
         name=body.name,
         created_by=admin.get("user_id", ""),
         is_active=True,
+        expires_at=expires_at,
         created_at=now,
     )
     try:
@@ -426,10 +444,10 @@ def create_api_key(agent_id: str, body: ApiKeyCreate, admin: dict = Depends(requ
             session.add(record)
             session.commit()
     except Exception as e:
-        logger.error("Failed to create API key for agent %s: %s", agent_id, e)
+        logger.error("Failed to create API key for agent %s: %s", agent_id, e, exc_info=True)
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to create API key: {e}. "
+            detail="Failed to create API key. "
             "Ensure the database migration has been run (alembic upgrade head).",
         )
     logger.info("API key created for agent %s by %s", agent_id, admin.get("user_id", ""))
@@ -440,6 +458,7 @@ def create_api_key(agent_id: str, body: ApiKeyCreate, admin: dict = Depends(requ
         "key_prefix": key_prefix,
         "agent_id": agent_id,
         "name": body.name,
+        "expires_at": expires_at.isoformat() if expires_at else None,
         "created_at": now.isoformat(),
     }
 
@@ -474,6 +493,9 @@ def list_api_keys(agent_id: str, user: dict = Depends(get_current_user)):
                     "name": r.name,
                     "created_by": r.created_by,
                     "is_active": r.is_active,
+                    "expires_at": (
+                        r.expires_at.isoformat() if getattr(r, "expires_at", None) else None
+                    ),
                     "last_used_at": r.last_used_at.isoformat() if r.last_used_at else None,
                     "created_at": r.created_at.isoformat() if r.created_at else "",
                 }

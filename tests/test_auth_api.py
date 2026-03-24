@@ -367,3 +367,121 @@ class TestUserManagement:
 
         res = client.get(f"/api/dashboard/auth/users/{user_id}/agents", headers=headers)
         assert res.json()["agent_ids"] == ["agent3"]
+
+
+# --- Security hardening tests ---
+
+
+class TestAdminPasswordHashing:
+    """Verify admin password is stored as hash, not plain-text."""
+
+    def test_admin_password_is_hashed_after_init(self):
+        """init_auth should hash the admin password, not store plain-text."""
+        from core.config import AppConfig
+
+        config = AppConfig()
+        init_auth(config)
+        # The stored value should be a PBKDF2 hash (salt:hash format)
+        assert ":" in auth_module._admin_password_hash
+        # It must NOT be the raw password
+        assert auth_module._admin_password_hash != "admin-pass-123"
+        # It must verify correctly
+        assert _verify_password("admin-pass-123", auth_module._admin_password_hash)
+
+    def test_admin_password_hash_empty_when_not_configured(self):
+        """If DASHBOARD_PASSWORD is empty, hash should be empty."""
+        from core.config import AppConfig
+
+        old = os.environ.get("DASHBOARD_PASSWORD", "")
+        try:
+            os.environ["DASHBOARD_PASSWORD"] = ""
+            config = AppConfig()
+            init_auth(config)
+            assert auth_module._admin_password_hash == ""
+        finally:
+            os.environ["DASHBOARD_PASSWORD"] = old
+            config = AppConfig()
+            init_auth(config)
+
+
+class TestApiKeyExpiry:
+    """Verify API key expiry is enforced."""
+
+    def test_expired_api_key_is_rejected(self):
+        """_authenticate_api_key should return None for expired keys."""
+        from datetime import datetime, timedelta, timezone
+        from unittest.mock import MagicMock, patch
+
+        from api.auth import _authenticate_api_key
+
+        raw_key = "oi_test-expired-key-12345"
+
+        # Create a mock record with expired timestamp
+        mock_record = MagicMock()
+        mock_record.id = "test-id"
+        mock_record.name = "test"
+        mock_record.key_prefix = "oi_test-e"
+        mock_record.agent_id = "agent1"
+        mock_record.expires_at = datetime.now(timezone.utc) - timedelta(hours=1)
+        mock_record.is_active = True
+
+        mock_session = MagicMock()
+        mock_session.__enter__ = MagicMock(return_value=mock_session)
+        mock_session.__exit__ = MagicMock(return_value=False)
+        mock_session.query.return_value.filter_by.return_value.first.return_value = mock_record
+
+        with patch("api.auth._get_session", return_value=mock_session):
+            result = _authenticate_api_key(raw_key)
+            assert result is None, "Expired API key should be rejected"
+
+    def test_non_expired_api_key_is_accepted(self):
+        """_authenticate_api_key should accept valid, non-expired keys."""
+        from datetime import datetime, timedelta, timezone
+        from unittest.mock import MagicMock, patch
+
+        from api.auth import _authenticate_api_key
+
+        raw_key = "oi_test-valid-key-12345"
+
+        mock_record = MagicMock()
+        mock_record.id = "test-id"
+        mock_record.name = "test"
+        mock_record.key_prefix = "oi_test-v"
+        mock_record.agent_id = "agent1"
+        mock_record.expires_at = datetime.now(timezone.utc) + timedelta(days=30)
+        mock_record.is_active = True
+
+        mock_session = MagicMock()
+        mock_session.__enter__ = MagicMock(return_value=mock_session)
+        mock_session.__exit__ = MagicMock(return_value=False)
+        mock_session.query.return_value.filter_by.return_value.first.return_value = mock_record
+
+        with patch("api.auth._get_session", return_value=mock_session):
+            result = _authenticate_api_key(raw_key)
+            assert result is not None, "Valid API key should be accepted"
+            assert result["agent_id"] == "agent1"
+
+    def test_api_key_without_expiry_is_accepted(self):
+        """_authenticate_api_key should accept keys with no expiry (expires_at=None)."""
+        from unittest.mock import MagicMock, patch
+
+        from api.auth import _authenticate_api_key
+
+        raw_key = "oi_test-no-expiry-12345"
+
+        mock_record = MagicMock()
+        mock_record.id = "test-id"
+        mock_record.name = "test"
+        mock_record.key_prefix = "oi_test-n"
+        mock_record.agent_id = "agent1"
+        mock_record.expires_at = None
+        mock_record.is_active = True
+
+        mock_session = MagicMock()
+        mock_session.__enter__ = MagicMock(return_value=mock_session)
+        mock_session.__exit__ = MagicMock(return_value=False)
+        mock_session.query.return_value.filter_by.return_value.first.return_value = mock_record
+
+        with patch("api.auth._get_session", return_value=mock_session):
+            result = _authenticate_api_key(raw_key)
+            assert result is not None, "API key without expiry should be accepted"
