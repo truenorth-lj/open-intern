@@ -315,6 +315,85 @@ class E2BSandboxBackend(SandboxBackendProtocol):
     async def adownload_files(self, paths: list[str]) -> list[FileDownloadResponse]:
         return await asyncio.to_thread(self.download_files, paths)
 
+    # --- R2 Backup/Restore ---
+
+    def backup_to_r2(self, r2) -> str | None:
+        """Tar /home/user and upload to R2. Returns backup key or None on failure."""
+        from core.r2_storage import R2Storage
+
+        if not isinstance(r2, R2Storage) or not r2.enabled:
+            return None
+
+        sbx = self._ensure_sandbox()
+        try:
+            # Tar user's home directory (excluding caches)
+            tar_result = sbx.commands.run(
+                "tar czf /tmp/sandbox_backup.tar.gz "
+                "--exclude='__pycache__' --exclude='.cache' "
+                "--exclude='node_modules' --exclude='.venv/lib' "
+                "-C /home/user .",
+                timeout=120,
+            )
+            if tar_result.exit_code != 0:
+                logger.warning(f"Tar failed: {tar_result.stderr}")
+                return None
+
+            # Capture pip packages
+            pip_result = sbx.commands.run("pip freeze 2>/dev/null || true", timeout=15)
+            requirements = pip_result.stdout or ""
+
+            # Download tar from sandbox
+            tar_bytes = sbx.files.read("/tmp/sandbox_backup.tar.gz", format="bytes")
+
+            # Upload to R2
+            key = r2.upload_backup(self._agent_id, tar_bytes, requirements)
+            logger.info(f"Backup complete for agent {self._agent_id}: {key}")
+            return key
+        except Exception as e:
+            logger.warning(f"Backup failed for agent {self._agent_id}: {e}")
+            return None
+
+    def restore_from_r2(self, r2) -> bool:
+        """Download latest backup from R2 and restore into sandbox. Returns success."""
+        from core.r2_storage import R2Storage
+
+        if not isinstance(r2, R2Storage) or not r2.enabled:
+            return False
+
+        try:
+            tar_bytes, requirements = r2.download_latest_backup(self._agent_id)
+            if tar_bytes is None:
+                logger.info(f"No backup to restore for agent {self._agent_id}")
+                return False
+
+            sbx = self._ensure_sandbox()
+
+            # Upload tar to sandbox
+            sbx.files.write("/tmp/restore.tar.gz", tar_bytes)
+
+            # Extract
+            result = sbx.commands.run(
+                "tar xzf /tmp/restore.tar.gz -C /home/user && rm /tmp/restore.tar.gz",
+                timeout=120,
+            )
+            if result.exit_code != 0:
+                logger.warning(f"Restore extract failed: {result.stderr}")
+                return False
+
+            # Reinstall pip packages (best-effort)
+            if requirements and requirements.strip():
+                sbx.files.write("/tmp/requirements.txt", requirements)
+                sbx.commands.run(
+                    "pip install -q -r /tmp/requirements.txt 2>/dev/null || true",
+                    timeout=120,
+                )
+
+            logger.info(f"Restore complete for agent {self._agent_id}")
+            return True
+        except Exception as e:
+            logger.warning(f"Restore failed for agent {self._agent_id}: {e}")
+            return False
+
     # --- Lifecycle ---
 
     def pause(self) -> str | None:

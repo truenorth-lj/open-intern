@@ -227,7 +227,10 @@ class OpenInternAgent:
             def _backend_factory(rt):
                 return _backend
 
-            # Seed skills into E2B sandbox filesystem
+            # Restore files from R2 backup (if available)
+            self._restore_sandbox_from_r2()
+
+            # Seed skills into sandbox (overwrites — disk skills are authoritative)
             self._seed_skills_to_sandbox()
 
             logger.info("Backend ready (E2B unified — files + shell in sandbox)")
@@ -349,6 +352,22 @@ class OpenInternAgent:
             self._e2b_backend.execute("mkdir -p /home/user/skills")
             self._e2b_backend.upload_files(files_to_upload)
             logger.info(f"Seeded {len(files_to_upload)} skill file(s) into E2B sandbox")
+
+    def _restore_sandbox_from_r2(self) -> None:
+        """Restore files from R2 backup into the E2B sandbox."""
+        if self._e2b_backend is None:
+            return
+        try:
+            from core.r2_storage import R2Storage
+
+            r2 = R2Storage(self.config)
+            if not r2.enabled:
+                return
+            restored = self._e2b_backend.restore_from_r2(r2)
+            if restored:
+                logger.info(f"Restored sandbox from R2 backup for agent {self.agent_id}")
+        except Exception as e:
+            logger.warning(f"R2 restore failed (non-fatal): {e}")
 
     async def chat(
         self, message: str, context: ChatContext | None = None, thread_id: str | None = None

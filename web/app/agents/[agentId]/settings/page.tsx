@@ -18,8 +18,12 @@ import {
   createApiKey,
   listApiKeys,
   revokeApiKey,
+  backupSandbox,
+  listSandboxBackups,
+  restoreSandbox,
   type AgentInfo,
   type ApiKeyInfo,
+  type BackupEntry,
 } from "@/lib/api";
 import { useDesktopStream } from "@/lib/use-desktop-stream";
 
@@ -75,12 +79,18 @@ export default function AgentSettingsPage({
   const [newApiKey, setNewApiKey] = useState("");
   const [apiKeyMsg, setApiKeyMsg] = useState("");
 
+  // Sandbox backups
+  const [backups, setBackups] = useState<BackupEntry[]>([]);
+  const [backupLoading, setBackupLoading] = useState(false);
+  const [backupMsg, setBackupMsg] = useState("");
+
   const isAdmin = user?.role === "admin";
 
   useEffect(() => {
     if (authLoading) return;
     loadAgent();
     loadApiKeys();
+    loadBackups();
     stream.loadStatus();
   }, [authLoading, agentId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -116,6 +126,43 @@ export default function AgentSettingsPage({
       setApiKeys(data.api_keys);
     } catch {
       // ignore — may not have access
+    }
+  }
+
+  async function loadBackups() {
+    try {
+      const data = await listSandboxBackups(agentId);
+      setBackups(data.backups);
+    } catch {
+      // ignore
+    }
+  }
+
+  async function handleBackup() {
+    setBackupLoading(true);
+    setBackupMsg("");
+    try {
+      await backupSandbox(agentId);
+      setBackupMsg("Backup created.");
+      loadBackups();
+    } catch (err) {
+      setBackupMsg(err instanceof Error ? err.message : "Backup failed");
+    } finally {
+      setBackupLoading(false);
+    }
+  }
+
+  async function handleRestore() {
+    setBackupLoading(true);
+    setBackupMsg("");
+    try {
+      await restoreSandbox(agentId);
+      setBackupMsg("Restore complete.");
+      loadBackups();
+    } catch (err) {
+      setBackupMsg(err instanceof Error ? err.message : "Restore failed");
+    } finally {
+      setBackupLoading(false);
     }
   }
 
@@ -602,6 +649,59 @@ export default function AgentSettingsPage({
                       {stream.loading ? "Starting Desktop..." : "Launch Desktop"}
                     </Button>
                   )}
+
+                  {/* Backups */}
+                  <div className="border-t pt-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-base font-semibold">Backups</Label>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleBackup}
+                        disabled={backupLoading || !stream.streamUrl}
+                      >
+                        {backupLoading ? "Backing up..." : "Backup Now"}
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Backups save all files and installed packages to Cloudflare R2.
+                      Automatically created when pausing.
+                    </p>
+                    {backupMsg && (
+                      <p className={`text-xs ${backupMsg.includes("failed") ? "text-destructive" : "text-green-600"}`}>
+                        {backupMsg}
+                      </p>
+                    )}
+                    {backups.length > 0 ? (
+                      <div className="space-y-1">
+                        {backups.slice(0, 5).map((b) => (
+                          <div
+                            key={b.key}
+                            className="flex items-center justify-between text-xs rounded border px-3 py-2"
+                          >
+                            <div>
+                              <span className="font-mono">
+                                {new Date(b.timestamp).toLocaleString()}
+                              </span>
+                              <span className="text-muted-foreground ml-2">
+                                {(b.size_bytes / 1024 / 1024).toFixed(1)} MB
+                              </span>
+                            </div>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={handleRestore}
+                              disabled={backupLoading}
+                            >
+                              Restore
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">No backups yet.</p>
+                    )}
+                  </div>
                 </CardContent>
               </Card>
             </TabsContent>

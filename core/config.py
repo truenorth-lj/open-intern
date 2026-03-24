@@ -92,6 +92,12 @@ class AppConfig(BaseSettings):
     # Shared infra keys
     e2b_api_key: str = ""
 
+    # Cloudflare R2 backup (S3-compatible)
+    r2_account_id: str = ""
+    r2_access_key_id: str = ""
+    r2_secret_access_key: str = ""
+    r2_bucket: str = "open-intern-backups"
+
     # Per-agent config (built by AgentManager from DB, not from .env)
     identity: IdentityConfig = Field(default_factory=IdentityConfig)
     llm: LLMConfig = Field(default_factory=LLMConfig)
