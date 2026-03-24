@@ -52,11 +52,19 @@ class E2BDesktopBackend(E2BSandboxBackend):
                     f"for agent {self._agent_id}"
                 )
                 return
-            except Exception:
-                logger.warning(
-                    f"Could not reconnect to desktop sandbox "
-                    f"{self._existing_sandbox_id}, creating new one"
-                )
+            except Exception as e:
+                error_msg = str(e).lower()
+                if "not found" in error_msg or "does not exist" in error_msg:
+                    logger.warning(
+                        f"Desktop sandbox {self._existing_sandbox_id} no longer "
+                        f"exists, clearing stale ID for agent {self._agent_id}"
+                    )
+                    self._existing_sandbox_id = None
+                else:
+                    logger.warning(
+                        f"Could not reconnect to desktop sandbox "
+                        f"{self._existing_sandbox_id} ({e}), creating new one"
+                    )
 
         self._sandbox = Sandbox.create(
             timeout=self._default_timeout,

@@ -77,10 +77,21 @@ class E2BSandboxBackend(SandboxBackendProtocol):
                     f"for agent {self._agent_id}"
                 )
                 return
-            except Exception:
-                logger.warning(
-                    f"Could not reconnect to sandbox {self._existing_sandbox_id}, creating new one"
-                )
+            except Exception as e:
+                error_msg = str(e).lower()
+                if "not found" in error_msg or "does not exist" in error_msg:
+                    # Sandbox is permanently gone — clear stale ID
+                    logger.warning(
+                        f"Sandbox {self._existing_sandbox_id} no longer exists, "
+                        f"clearing stale ID for agent {self._agent_id}"
+                    )
+                    self._existing_sandbox_id = None
+                else:
+                    # Possibly transient error — keep ID for future retry
+                    logger.warning(
+                        f"Could not reconnect to sandbox {self._existing_sandbox_id} "
+                        f"({e}), creating new one but keeping ID"
+                    )
 
         self._sandbox = Sandbox.create(
             template=self._template,
