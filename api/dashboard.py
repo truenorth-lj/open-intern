@@ -118,10 +118,10 @@ def list_agents(user: dict = Depends(get_current_user)):
 
 
 @router.post("/agents")
-def create_agent(body: AgentCreate, admin: dict = Depends(require_admin)):
+async def create_agent(body: AgentCreate, admin: dict = Depends(require_admin)):
     mgr = _get_manager()
     try:
-        result = mgr.create_agent(**body.model_dump())
+        result = await mgr.create_agent(**body.model_dump())
         return result
     except DuplicateAgentError as e:
         raise HTTPException(status_code=409, detail=str(e))
@@ -148,13 +148,13 @@ def get_agent_detail(agent_id: str, user: dict = Depends(get_current_user)):
 
 
 @router.put("/agents/{agent_id}")
-def update_agent(agent_id: str, body: AgentUpdate, admin: dict = Depends(require_admin)):
+async def update_agent(agent_id: str, body: AgentUpdate, admin: dict = Depends(require_admin)):
     mgr = _get_manager()
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
     try:
-        result = mgr.update_agent(agent_id, **updates)
+        result = await mgr.update_agent(agent_id, **updates)
         return result
     except AgentNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -189,7 +189,7 @@ async def reload_agent(agent_id: str, admin: dict = Depends(require_admin)):
     if not any(a["agent_id"] == agent_id for a in agents):
         raise HTTPException(status_code=404, detail=f"Agent '{agent_id}' not found")
     try:
-        mgr._reload_agent(agent_id)
+        await mgr._reload_agent_async(agent_id)
     except Exception:
         logger.exception("Failed to reload agent %s", agent_id)
         raise HTTPException(status_code=500, detail="Reload failed due to internal error")
@@ -544,9 +544,9 @@ def list_settings(user: dict = Depends(get_current_user)):
 
 
 @router.put("/settings/{key}")
-def upsert_setting(key: str, body: SettingUpsert, admin: dict = Depends(require_admin)):
+async def upsert_setting(key: str, body: SettingUpsert, admin: dict = Depends(require_admin)):
     mgr = _get_manager()
-    result = mgr.upsert_system_setting(
+    result = await mgr.upsert_system_setting(
         key=key,
         value=body.value,
         is_secret=body.is_secret,
@@ -996,9 +996,9 @@ def list_skills(agent_id: str = "", user: dict = Depends(get_current_user)):
         agent = _get_agent(agent_id or None)
     except Exception:
         raise HTTPException(status_code=503, detail="Agent not available")
-    if not agent.is_initialized or agent._postgres_store is None:
+    if not agent.is_initialized or agent._store is None:
         raise HTTPException(status_code=503, detail="Agent not initialized")
-    skills = _list_skills(agent._postgres_store, agent_id=agent.agent_id)
+    skills = _list_skills(agent._store, agent_id=agent.agent_id)
     return {"skills": skills}
 
 
@@ -1013,9 +1013,9 @@ def get_skill(skill_name: str, agent_id: str = "", user: dict = Depends(get_curr
         agent = _get_agent(agent_id or None)
     except Exception:
         raise HTTPException(status_code=503, detail="Agent not available")
-    if not agent.is_initialized or agent._postgres_store is None:
+    if not agent.is_initialized or agent._store is None:
         raise HTTPException(status_code=503, detail="Agent not initialized")
-    skills = _list_skills(agent._postgres_store, agent_id=agent.agent_id)
+    skills = _list_skills(agent._store, agent_id=agent.agent_id)
     for s in skills:
         if s["name"] == skill_name:
             return s

@@ -43,8 +43,6 @@ async def compact_context(
         Tuple of (new_messages, summary_text).
         new_messages starts with a system summary message followed by keep_recent messages.
     """
-    import asyncio
-
     if len(messages) <= keep_recent:
         return messages, ""
 
@@ -52,8 +50,8 @@ async def compact_context(
     old_messages = messages[:-keep_recent]
     recent_messages = messages[-keep_recent:]
 
-    # Build a summary of the old messages
-    summary_text = await asyncio.to_thread(_summarize_messages, llm, old_messages)
+    # Native async summarization — no thread pool
+    summary_text = await _summarize_messages_async(llm, old_messages)
 
     # Create a synthetic system message with the summary
     from langchain_core.messages import SystemMessage
@@ -74,15 +72,13 @@ async def compact_context(
     return new_messages, summary_text
 
 
-def _summarize_messages(llm: Any, messages: list) -> str:
-    """Synchronously summarize a list of messages using the LLM."""
-    # Format messages into a readable transcript
+def _build_transcript(messages: list) -> str:
+    """Format messages into a readable transcript for summarization."""
     transcript_lines = []
     for msg in messages:
         role = getattr(msg, "type", "unknown")
         content = getattr(msg, "content", "")
         if isinstance(content, list):
-            # Handle structured content blocks
             text_parts = []
             for block in content:
                 if isinstance(block, dict) and block.get("type") == "text":
@@ -92,8 +88,12 @@ def _summarize_messages(llm: Any, messages: list) -> str:
             content = " ".join(text_parts)
         if content:
             transcript_lines.append(f"[{role}]: {content[:500]}")
+    return "\n".join(transcript_lines[-50:])
 
-    transcript = "\n".join(transcript_lines[-50:])  # Limit to last 50 for summary input
+
+async def _summarize_messages_async(llm: Any, messages: list) -> str:
+    """Summarize messages using the LLM's native async ainvoke."""
+    transcript = _build_transcript(messages)
 
     prompt = (
         "Summarize this conversation concisely, preserving:\n"
@@ -106,7 +106,7 @@ def _summarize_messages(llm: Any, messages: list) -> str:
     )
 
     try:
-        result = llm.invoke(prompt)
+        result = await llm.ainvoke(prompt)
         content = result.content
         if isinstance(content, list):
             for block in content:
@@ -116,7 +116,6 @@ def _summarize_messages(llm: Any, messages: list) -> str:
         return str(content)
     except Exception as e:
         logger.error(f"Failed to summarize messages: {e}")
-        # Fallback: simple truncation summary
         return (
             f"[Summary generation failed. {len(messages)} earlier messages "
             "were removed to free context.]"

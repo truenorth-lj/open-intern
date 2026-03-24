@@ -1,7 +1,7 @@
 """Seed skills from disk into PostgresStore.
 
 Scans the skills/ directory for SKILL.md files and writes them into
-PostgresStore so Deep Agents can discover them at runtime.
+PostgresStore so the agent can discover them at runtime.
 
 Usage:
     python scripts/seed_skills.py                    # Use DATABASE_URL env var
@@ -11,6 +11,7 @@ Usage:
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -21,12 +22,48 @@ MAX_FILE_SIZE = 1_000_000  # 1MB
 
 
 def _namespace_for(agent_id: str) -> tuple[str, ...]:
-    """Return the store namespace matching the agent's StoreBackend."""
+    """Return the store namespace matching the agent's filesystem."""
     return ("agent", agent_id, "filesystem")
 
 
+def _create_file_data(content: str) -> dict:
+    """Create a file data dict compatible with the store format.
+
+    Replaces the deepagents.backends.utils.create_file_data dependency.
+    """
+    now = datetime.now(timezone.utc).isoformat()
+    return {
+        "content": content.splitlines(),
+        "created_at": now,
+        "modified_at": now,
+    }
+
+
+def _iter_skill_files(skills_dir: Path):
+    """Yield (virtual_path, content) for all skill files."""
+    if not skills_dir.exists():
+        logger.warning(f"Skills directory not found: {skills_dir}")
+        return
+
+    for skill_dir in sorted(skills_dir.iterdir()):
+        if not skill_dir.is_dir() or skill_dir.name.startswith((".", "_")):
+            continue
+
+        for file_path in sorted(skill_dir.rglob("*")):
+            if not file_path.is_file():
+                continue
+            if file_path.stat().st_size > MAX_FILE_SIZE:
+                logger.warning(f"Skipping oversized file: {file_path}")
+                continue
+
+            relative = file_path.relative_to(skills_dir)
+            virtual_path = f"/skills/{relative.as_posix()}"
+            content = file_path.read_text(encoding="utf-8")
+            yield virtual_path, content
+
+
 def seed_skills(store, skills_dir: Path | None = None, *, agent_id: str = DEFAULT_AGENT_ID) -> int:
-    """Seed all skills from disk into a LangGraph BaseStore.
+    """Seed all skills from disk into a LangGraph BaseStore (sync).
 
     Args:
         store: A LangGraph BaseStore instance (e.g. PostgresStore).
@@ -36,44 +73,53 @@ def seed_skills(store, skills_dir: Path | None = None, *, agent_id: str = DEFAUL
     Returns:
         Number of skill files seeded.
     """
-    from deepagents.backends.utils import create_file_data
-
     namespace = _namespace_for(agent_id)
     skills_dir = skills_dir or SKILLS_DIR
-    if not skills_dir.exists():
-        logger.warning(f"Skills directory not found: {skills_dir}")
-        return 0
 
     count = 0
-    for skill_dir in sorted(skills_dir.iterdir()):
-        if not skill_dir.is_dir() or skill_dir.name.startswith((".", "_")):
+    for virtual_path, content in _iter_skill_files(skills_dir):
+        file_data = _create_file_data(content)
+
+        existing = store.get(namespace, virtual_path)
+        if existing and existing.value.get("content") == file_data["content"]:
+            logger.debug(f"Skill unchanged, skipping: {virtual_path}")
             continue
 
-        for file_path in sorted(skill_dir.rglob("*")):
-            if not file_path.is_file():
-                continue
+        store.put(namespace, virtual_path, file_data)
+        logger.info(f"Seeded skill: {virtual_path}")
+        count += 1
 
-            # Skip oversized files
-            if file_path.stat().st_size > MAX_FILE_SIZE:
-                logger.warning(f"Skipping oversized file: {file_path}")
-                continue
+    return count
 
-            # Build virtual path: /skills/git-ops/SKILL.md
-            relative = file_path.relative_to(skills_dir)
-            virtual_path = f"/skills/{relative.as_posix()}"
 
-            content = file_path.read_text(encoding="utf-8")
-            file_data = create_file_data(content)
+async def seed_skills_async(
+    store, skills_dir: Path | None = None, *, agent_id: str = DEFAULT_AGENT_ID
+) -> int:
+    """Seed all skills from disk into an AsyncPostgresStore (native async).
 
-            # Check if file already exists with same content
-            existing = store.get(namespace, virtual_path)
-            if existing and existing.value.get("content") == file_data["content"]:
-                logger.debug(f"Skill unchanged, skipping: {virtual_path}")
-                continue
+    Args:
+        store: A LangGraph AsyncBaseStore instance (e.g. AsyncPostgresStore).
+        skills_dir: Directory containing skill subdirectories.
+        agent_id: Agent ID to determine the correct store namespace.
 
-            store.put(namespace, virtual_path, file_data)
-            logger.info(f"Seeded skill: {virtual_path}")
-            count += 1
+    Returns:
+        Number of skill files seeded.
+    """
+    namespace = _namespace_for(agent_id)
+    skills_dir = skills_dir or SKILLS_DIR
+
+    count = 0
+    for virtual_path, content in _iter_skill_files(skills_dir):
+        file_data = _create_file_data(content)
+
+        existing = await store.aget(namespace, virtual_path)
+        if existing and existing.value.get("content") == file_data["content"]:
+            logger.debug(f"Skill unchanged, skipping: {virtual_path}")
+            continue
+
+        await store.aput(namespace, virtual_path, file_data)
+        logger.info(f"Seeded skill: {virtual_path}")
+        count += 1
 
     return count
 

@@ -232,4 +232,5 @@ class TestSandboxModeSelection:
         result = agent._create_shell_backend()
 
         assert agent._e2b_backend is None
-        assert result is not None
+        # No sandbox backend for "none" mode (no CompositeBackend needed)
+        assert result is None

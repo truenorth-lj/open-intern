@@ -81,12 +81,50 @@ def get_agent(agent_id: str | None = None) -> OpenInternAgent:
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """FastAPI lifespan: pause all E2B sandboxes on shutdown."""
+    """FastAPI lifespan: async agent init on startup, sandbox pause on shutdown."""
     import asyncio
 
-    yield
-    # --- Shutdown ---
+    # --- Startup: run async initialization on uvicorn's event loop ---
     mgr: AgentManager | None = getattr(app.state, "agent_manager", None)
+    if mgr:
+        await mgr.initialize_async()
+        logger.info("All agents async-initialized on uvicorn loop")
+
+    # If a default agent was created without async init, do it now
+    default_agent: OpenInternAgent | None = getattr(app.state, "default_agent", None)
+    if default_agent and not default_agent.is_initialized:
+        await default_agent.initialize_async()
+        logger.info("Default agent async-initialized")
+
+    # Start scheduler after async init (agents now have graphs)
+    sched: CronScheduler | None = getattr(app.state, "cron_scheduler", None)
+    if sched and mgr:
+        sched.initialize(mgr)
+
+    # Register heartbeat agents
+    heartbeat: HeartbeatRunner | None = getattr(app.state, "heartbeat_runner", None)
+    if heartbeat and mgr:
+        for agent_id, agent in mgr.agents.items():
+            if agent.config.behavior.proactivity.enabled:
+                heartbeat.register_agent(
+                    agent,
+                    interval_minutes=agent.config.behavior.proactivity.heartbeat_interval_minutes,
+                    quiet_hours=agent.config.behavior.proactivity.quiet_hours,
+                )
+        heartbeat.start()
+
+    # Setup platform bots
+    config: AppConfig | None = getattr(app.state, "config", None)
+    if config and mgr:
+        for plat in ("telegram", "discord", "lark"):
+            try:
+                await _setup_platform_bots(app, config, mgr, plat)
+            except Exception as e:
+                logger.warning(f"Failed to setup {plat} bots: {e}")
+
+    yield
+
+    # --- Shutdown ---
     if mgr:
         logger.info("Shutting down: pausing all E2B sandboxes...")
         await asyncio.to_thread(mgr.pause_all_sandboxes)
@@ -102,6 +140,7 @@ def create_app(config: AppConfig) -> FastAPI:
     app.state.discord_bots: dict = {}
     app.state.lark_bots: dict = {}
     app.state.default_agent = None
+    app.state.config = config
 
     # CORS
     default_origins = ["http://localhost:3000", "https://open-intern.zeabur.app"]
@@ -297,7 +336,7 @@ async def run_web_only(app: FastAPI, config: AppConfig) -> None:
 
 
 async def run_agent(platform: str = "web") -> None:
-    """Main entry point — initialize agent manager and run on configured platform."""
+    """Main entry point — sync init before loop, async init in lifespan."""
     global _app
 
     config = get_config()
@@ -314,9 +353,9 @@ async def run_agent(platform: str = "web") -> None:
     # Create scheduler (lightweight — no jobs loaded yet)
     scheduler = CronScheduler(config.database_url)
 
-    # Initialize agent manager (loads all agents from DB, with scheduler tools)
+    # Phase 1: Sync init — memory, LLM, backend (no event loop needed)
     manager = AgentManager(config, scheduler=scheduler)
-    manager.initialize()
+    manager.initialize_sync()
 
     # Create the FastAPI app
     app = create_app(config)
@@ -325,59 +364,29 @@ async def run_agent(platform: str = "web") -> None:
     # Create heartbeat runner
     heartbeat = HeartbeatRunner()
 
-    # Store state on app
+    # Store state on app (lifespan will do async init)
     app.state.agent_manager = manager
     app.state.cron_scheduler = scheduler
     app.state.heartbeat_runner = heartbeat
 
-    # If no agents in DB, create a default agent
+    # If no agents in DB, create a default agent (sync phase only)
     if not manager.agents:
         logger.info("No agents in DB — creating default agent")
         from core.scheduler import create_scheduler_tools
 
         extra_tools = create_scheduler_tools(scheduler, "default")
         agent = OpenInternAgent(config, agent_id="default", extra_tools=extra_tools)
-        agent.initialize()
+        agent.initialize_sync()
         app.state.default_agent = agent
         manager._agents["default"] = agent
 
-    # Now start the scheduler (loads jobs from DB and begins execution)
-    scheduler.initialize(manager)
-
-    # Register agents for heartbeat if proactivity is enabled
-    for agent_id, agent in manager.agents.items():
-        if agent.config.behavior.proactivity.enabled:
-            heartbeat.register_agent(
-                agent,
-                interval_minutes=agent.config.behavior.proactivity.heartbeat_interval_minutes,
-                quiet_hours=agent.config.behavior.proactivity.quiet_hours,
-            )
-    heartbeat.start()
+    # Phase 2: Async init happens in _lifespan startup
+    # (checkpointer, store, graph compilation — all on uvicorn's loop)
 
     # Run on the configured platform
-    if platform == "telegram":
-        await _setup_platform_bots(app, config, manager, "telegram")
-        await run_web_only(app, config)
-    elif platform == "lark":
-        await _setup_platform_bots(app, config, manager, "lark")
-        import uvicorn
-
-        server_config = uvicorn.Config(
-            app, host="0.0.0.0", port=_get_port(config), log_level="info"
-        )
-        server = uvicorn.Server(server_config)
-        await server.serve()
-    elif platform == "discord":
-        await _setup_platform_bots(app, config, manager, "discord")
-        await run_web_only(app, config)
-    elif platform == "web":
-        logger.info(f"Running in web-only mode (dashboard API on port {config.port})")
-        # Auto-setup platform bots for agents that have tokens configured
-        for plat in ("telegram", "discord", "lark"):
-            try:
-                await _setup_platform_bots(app, config, manager, plat)
-            except Exception as e:
-                logger.warning(f"Failed to setup {plat} bots in web mode: {e}")
+    if platform in ("telegram", "lark", "discord", "web"):
+        if platform == "web":
+            logger.info(f"Running in web-only mode (dashboard API on port {config.port})")
         await run_web_only(app, config)
     elif platform == "slack":
         logger.error("Slack integration not yet implemented.")

@@ -52,8 +52,30 @@ class AgentManager:
         self._engine = get_engine(config.database_url)
         self._session_factory = get_session_factory(config.database_url)
 
+    def initialize_sync(self) -> None:
+        """Phase 1 (sync): Check schema and run sync init for all agents.
+
+        Prepares agents but does NOT compile graphs (needs async).
+        """
+        if not getattr(self, "_schema_checked", False):
+            self._check_schema()
+            self._schema_checked = True
+        self._load_agents_sync()
+
+    async def initialize_async(self) -> None:
+        """Phase 2 (async): Run async init for all agents (checkpointer, store, graph).
+
+        Must be called on the uvicorn event loop.
+        """
+        for agent_id, agent in list(self._agents.items()):
+            try:
+                await agent.initialize_async()
+                logger.info(f"Async init complete for agent: {agent_id}")
+            except Exception as e:
+                logger.error(f"Async init failed for agent {agent_id}: {e}")
+
     def initialize(self) -> None:
-        """Load all active agents from DB. Tables managed by Alembic migrations."""
+        """Legacy sync initialize — for CLI and tests (uses sync PostgresSaver)."""
         if not getattr(self, "_schema_checked", False):
             self._check_schema()
             self._schema_checked = True
@@ -83,8 +105,43 @@ class AgentManager:
                 extra,
             )
 
+    def _load_agents_sync(self) -> None:
+        """Load agents from DB and run sync init only (memory, LLM, backend)."""
+        with self._session_factory() as session:
+            records = session.query(AgentRecord).filter_by(is_active=True).all()
+            for rec in records:
+                try:
+                    self._init_agent_sync(rec)
+                    logger.info(f"Sync init for agent: {rec.agent_id} ({rec.name})")
+                except Exception as e:
+                    logger.error(f"Failed to sync-init agent {rec.agent_id}: {e}")
+
+    def _init_agent_sync(self, rec: AgentRecord) -> OpenInternAgent:
+        """Create agent, run sync init only. Async init happens later."""
+        agent_config = self._build_agent_config(rec)
+
+        extra_tools: list = []
+        if self._scheduler:
+            from core.scheduler import create_scheduler_tools
+
+            extra_tools = create_scheduler_tools(self._scheduler, rec.agent_id)
+
+        agent = OpenInternAgent(
+            agent_config,
+            agent_id=rec.agent_id,
+            sandbox_mode=rec.sandbox_mode,
+            e2b_sandbox_id=rec.e2b_sandbox_id,
+            extra_tools=extra_tools,
+        )
+        agent.initialize_sync()
+        # Persist E2B sandbox ID back to DB if newly created
+        if agent._e2b_backend and agent._e2b_backend.sandbox_id:
+            self._update_sandbox_id(rec.agent_id, agent._e2b_backend.sandbox_id)
+        self._agents[rec.agent_id] = agent
+        return agent
+
     def _load_agents(self) -> None:
-        """Load and initialize all active agents from DB."""
+        """Legacy: Load and fully initialize all active agents (sync path)."""
         with self._session_factory() as session:
             records = session.query(AgentRecord).filter_by(is_active=True).all()
             for rec in records:
@@ -95,7 +152,7 @@ class AgentManager:
                     logger.error(f"Failed to load agent {rec.agent_id}: {e}")
 
     def _init_agent_from_record(self, rec: AgentRecord) -> OpenInternAgent:
-        """Create and initialize an OpenInternAgent from a DB record."""
+        """Create and fully initialize an agent (sync path for CLI/tests)."""
         agent_config = self._build_agent_config(rec)
 
         extra_tools: list = []
@@ -112,7 +169,6 @@ class AgentManager:
             extra_tools=extra_tools,
         )
         agent.initialize()
-        # Persist E2B sandbox ID back to DB if newly created
         if agent._e2b_backend and agent._e2b_backend.sandbox_id:
             self._update_sandbox_id(rec.agent_id, agent._e2b_backend.sandbox_id)
         self._agents[rec.agent_id] = agent
@@ -148,8 +204,21 @@ class AgentManager:
             except Exception as e:
                 logger.error(f"Failed to pause sandbox for agent {agent_id}: {e}")
 
+    async def _reload_agent_async(self, agent_id: str) -> None:
+        """Reload an agent with async init (for server context)."""
+        with self._session_factory() as session:
+            record = session.query(AgentRecord).filter_by(agent_id=agent_id).first()
+            if not record or not record.is_active:
+                return
+            try:
+                agent = self._init_agent_sync(record)
+                await agent.initialize_async()
+                logger.info(f"Reloaded agent runtime (async): {agent_id}")
+            except Exception as e:
+                logger.error(f"Failed to reload agent {agent_id}: {e}")
+
     def _reload_agent(self, agent_id: str) -> None:
-        """Reload an agent's runtime from DB so config changes take effect."""
+        """Reload an agent (sync path for CLI/tests)."""
         with self._session_factory() as session:
             record = session.query(AgentRecord).filter_by(agent_id=agent_id).first()
             if not record or not record.is_active:
@@ -272,7 +341,7 @@ class AgentManager:
                 for r in records
             ]
 
-    def create_agent(
+    async def create_agent(
         self,
         agent_id: str,
         name: str,
@@ -299,12 +368,11 @@ class AgentManager:
         importance_decay_days: int = 90,
         sandbox_mode: str = "base",
     ) -> dict:
+        """Create a new agent in DB and initialize it. Secrets are encrypted before storage."""
         if sandbox_mode not in ("none", "base", "desktop"):
             raise ValueError(
                 f"sandbox_mode must be 'none', 'base', or 'desktop', got: {sandbox_mode!r}"
             )
-        """Create a new agent in DB and initialize it. Secrets are encrypted before storage."""
-        # Validate inputs
         if not _AGENT_ID_RE.match(agent_id):
             raise ValueError(
                 f"Invalid agent_id '{agent_id}': "
@@ -355,13 +423,12 @@ class AgentManager:
                 raise DuplicateAgentError(agent_id)
             session.add(record)
             session.commit()
-            # Expunge before session closes so record stays usable
             session.expunge(record)
 
-        # Initialize the agent runtime (record is detached but fully loaded)
-        # If init fails, the DB record is already saved — return degraded status
+        # Initialize the agent runtime (sync + async phases)
         try:
-            self._init_agent_from_record(record)
+            agent = self._init_agent_sync(record)
+            await agent.initialize_async()
         except (KeyboardInterrupt, SystemExit):
             raise
         except Exception as e:
@@ -376,7 +443,7 @@ class AgentManager:
         logger.info(f"Created agent: {agent_id} ({name})")
         return {"agent_id": agent_id, "name": name, "status": "active"}
 
-    def update_agent(self, agent_id: str, **kwargs) -> dict:
+    async def update_agent(self, agent_id: str, **kwargs) -> dict:
         """Update agent fields in DB and reload the in-memory agent instance."""
         with self._session_factory() as session:
             record = session.query(AgentRecord).filter_by(agent_id=agent_id).first()
@@ -403,7 +470,6 @@ class AgentManager:
             }
             for key, value in kwargs.items():
                 if key in _ENCRYPTED_FIELDS:
-                    # Encrypt and store in the _encrypted column
                     setattr(record, f"{key}_encrypted", encrypt(value))
                 elif key in allowed_fields:
                     setattr(record, key, value)
@@ -411,9 +477,8 @@ class AgentManager:
             session.commit()
             agent_id_val = record.agent_id
         logger.info(f"Updated agent: {agent_id_val}")
-        # Reload agent runtime so config changes (API keys, model, etc.) take effect
         try:
-            self._reload_agent(agent_id_val)
+            await self._reload_agent_async(agent_id_val)
         except Exception as e:
             logger.warning(f"Agent {agent_id_val} updated in DB but reload failed: {e}")
             return {"agent_id": agent_id_val, "status": "updated_reload_failed"}
@@ -492,7 +557,7 @@ class AgentManager:
                 for r in records
             ]
 
-    def upsert_system_setting(
+    async def upsert_system_setting(
         self, key: str, value: str, is_secret: bool = False, description: str = ""
     ) -> dict:
         """Create or update a system setting. Encrypts value if is_secret."""
@@ -517,15 +582,14 @@ class AgentManager:
                     )
                 )
             session.commit()
-        # If default API key changed, reload all agents so they pick it up
         if key == "default_llm_api_key":
-            self._reload_all_agents()
+            await self._reload_all_agents_async()
         return {"key": key, "status": "updated"}
 
-    def _reload_all_agents(self) -> None:
-        """Reload all active agents from DB."""
+    async def _reload_all_agents_async(self) -> None:
+        """Reload all active agents from DB (async)."""
         for agent_id in list(self._agents.keys()):
-            self._reload_agent(agent_id)
+            await self._reload_agent_async(agent_id)
 
     def delete_system_setting(self, key: str) -> bool:
         """Delete a system setting. Returns True if deleted."""

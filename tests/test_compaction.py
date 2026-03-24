@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -58,11 +58,11 @@ class TestCompactContext:
             msg.content = f"Message {i}"
             msgs.append(msg)
 
-        # Mock LLM
+        # Mock LLM (async ainvoke)
         llm = MagicMock()
         mock_result = MagicMock()
         mock_result.content = "Summary of conversation"
-        llm.invoke.return_value = mock_result
+        llm.ainvoke = AsyncMock(return_value=mock_result)
 
         result, summary = await compact_context(llm, msgs, keep_recent=10)
 
@@ -84,7 +84,7 @@ class TestCompactContext:
             msgs.append(msg)
 
         llm = MagicMock()
-        llm.invoke.side_effect = Exception("LLM error")
+        llm.ainvoke = AsyncMock(side_effect=Exception("LLM error"))
 
         result, summary = await compact_context(llm, msgs, keep_recent=10)
         assert len(result) == 11

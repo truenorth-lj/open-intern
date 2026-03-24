@@ -7,7 +7,7 @@ import logging
 import re
 from dataclasses import dataclass
 
-from deepagents.backends.protocol import (
+from core.backend_types import (
     EditResult,
     ExecuteResponse,
     FileDownloadResponse,
