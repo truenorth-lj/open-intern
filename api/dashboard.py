@@ -1294,7 +1294,7 @@ def list_scheduled_jobs(agent_id: str = ""):
 async def create_scheduled_job(body: ScheduledJobCreate):
     scheduler = _get_scheduler()
     try:
-        result = await scheduler.add_job(
+        result = scheduler.add_job(
             agent_id=body.agent_id,
             name=body.name,
             schedule_type=body.schedule_type,
@@ -1326,7 +1326,7 @@ async def update_scheduled_job(job_id: str, body: ScheduledJobUpdate):
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
-    result = await scheduler.update_job(job_id, **updates)
+    result = scheduler.update_job(job_id, **updates)
     if result is None:
         raise HTTPException(status_code=404, detail="Job not found")
     return result
@@ -1335,7 +1335,7 @@ async def update_scheduled_job(job_id: str, body: ScheduledJobUpdate):
 @router.delete("/scheduled-jobs/{job_id}")
 async def delete_scheduled_job(job_id: str):
     scheduler = _get_scheduler()
-    removed = await scheduler.remove_job(job_id)
+    removed = scheduler.remove_job(job_id)
     if not removed:
         raise HTTPException(status_code=404, detail="Job not found")
     return {"ok": True}
@@ -1344,7 +1344,7 @@ async def delete_scheduled_job(job_id: str):
 @router.post("/scheduled-jobs/{job_id}/pause")
 async def pause_scheduled_job(job_id: str):
     scheduler = _get_scheduler()
-    paused = await scheduler.pause_job(job_id)
+    paused = scheduler.pause_job(job_id)
     if not paused:
         raise HTTPException(status_code=404, detail="Job not found")
     return {"ok": True, "status": "paused"}
@@ -1353,7 +1353,7 @@ async def pause_scheduled_job(job_id: str):
 @router.post("/scheduled-jobs/{job_id}/resume")
 async def resume_scheduled_job(job_id: str):
     scheduler = _get_scheduler()
-    resumed = await scheduler.resume_job(job_id)
+    resumed = scheduler.resume_job(job_id)
     if not resumed:
         raise HTTPException(status_code=404, detail="Job not found")
     return {"ok": True, "status": "resumed"}

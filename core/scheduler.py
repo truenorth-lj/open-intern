@@ -178,7 +178,7 @@ class CronScheduler:
             if result.rowcount == 0:
                 logger.warning(f"Job {job_id} not found when updating status")
 
-    async def add_job(
+    def add_job(
         self,
         agent_id: str,
         name: str,
@@ -287,7 +287,7 @@ class CronScheduler:
             "metadata": metadata or {},
         }
 
-    async def remove_job(self, job_id: str) -> bool:
+    def remove_job(self, job_id: str) -> bool:
         """Remove a job: unschedule first, then delete from DB."""
         # Check existence
         with self._session_factory() as session:
@@ -311,7 +311,7 @@ class CronScheduler:
         logger.info(f"Removed scheduled job: {job_id}")
         return True
 
-    async def update_job(self, job_id: str, **kwargs) -> dict | None:
+    def update_job(self, job_id: str, **kwargs) -> dict | None:
         """Update job fields and reschedule if schedule changed."""
         allowed = {
             "name",
@@ -356,14 +356,14 @@ class CronScheduler:
 
         return result
 
-    async def pause_job(self, job_id: str) -> bool:
+    def pause_job(self, job_id: str) -> bool:
         """Disable a job."""
-        result = await self.update_job(job_id, enabled=False)
+        result = self.update_job(job_id, enabled=False)
         return result is not None
 
-    async def resume_job(self, job_id: str) -> bool:
+    def resume_job(self, job_id: str) -> bool:
         """Re-enable a job."""
-        result = await self.update_job(job_id, enabled=True)
+        result = self.update_job(job_id, enabled=True)
         return result is not None
 
     async def trigger_job(self, job_id: str) -> bool:
@@ -435,7 +435,7 @@ def create_scheduler_tools(scheduler: CronScheduler, agent_id: str) -> list:
     """Create LangChain tools for an agent to manage its own scheduled jobs."""
 
     @tool
-    async def create_scheduled_job(
+    def create_scheduled_job(
         name: str,
         schedule_type: str,
         schedule_expr: str,
@@ -467,7 +467,7 @@ def create_scheduler_tools(scheduler: CronScheduler, agent_id: str) -> list:
                 of previous runs). If False (default), all runs share the same thread
                 so the agent can reference prior executions.
         """
-        result = await scheduler.add_job(
+        result = scheduler.add_job(
             agent_id=agent_id,
             name=name,
             schedule_type=schedule_type,
@@ -485,7 +485,7 @@ def create_scheduler_tools(scheduler: CronScheduler, agent_id: str) -> list:
         )
 
     @tool
-    async def list_scheduled_jobs() -> str:
+    def list_scheduled_jobs() -> str:
         """List all scheduled jobs for this agent."""
         jobs = scheduler.list_jobs(agent_id=agent_id)
         if not jobs:
@@ -503,37 +503,37 @@ def create_scheduler_tools(scheduler: CronScheduler, agent_id: str) -> list:
         return "\n".join(lines)
 
     @tool
-    async def delete_scheduled_job(job_id: str) -> str:
+    def delete_scheduled_job(job_id: str) -> str:
         """Delete a scheduled job by its ID.
 
         Args:
             job_id: The job ID (UUID) to delete.
         """
-        removed = await scheduler.remove_job(job_id)
+        removed = scheduler.remove_job(job_id)
         if removed:
             return f"Deleted scheduled job {job_id}."
         return f"Job {job_id} not found."
 
     @tool
-    async def pause_scheduled_job(job_id: str) -> str:
+    def pause_scheduled_job(job_id: str) -> str:
         """Pause a scheduled job (stop it from running until resumed).
 
         Args:
             job_id: The job ID (UUID) to pause.
         """
-        paused = await scheduler.pause_job(job_id)
+        paused = scheduler.pause_job(job_id)
         if paused:
             return f"Paused scheduled job {job_id}."
         return f"Job {job_id} not found."
 
     @tool
-    async def resume_scheduled_job(job_id: str) -> str:
+    def resume_scheduled_job(job_id: str) -> str:
         """Resume a paused scheduled job.
 
         Args:
             job_id: The job ID (UUID) to resume.
         """
-        resumed = await scheduler.resume_job(job_id)
+        resumed = scheduler.resume_job(job_id)
         if resumed:
             return f"Resumed scheduled job {job_id}."
         return f"Job {job_id} not found."
