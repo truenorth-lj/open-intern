@@ -98,9 +98,17 @@ class LarkBot(Integration):
 
     async def _fetch_user_name(self, open_id: str) -> str:
         """Fetch a user's display name via Contact API, with TTL cache."""
+        now = time.monotonic()
         cached = self._user_name_cache.get(open_id)
-        if cached and (time.monotonic() - cached[1]) < _USER_NAME_CACHE_TTL:
+        if cached and (now - cached[1]) < _USER_NAME_CACHE_TTL:
             return cached[0]
+        # Evict expired entries when cache grows large
+        if len(self._user_name_cache) > 1000:
+            self._user_name_cache = {
+                k: v
+                for k, v in self._user_name_cache.items()
+                if (now - v[1]) < _USER_NAME_CACHE_TTL
+            }
         try:
             from lark_oapi.api.contact.v3 import GetUserRequest
 
@@ -109,10 +117,12 @@ class LarkBot(Integration):
             if response.success() and response.data and response.data.user:
                 name = response.data.user.name or ""
                 if name:
-                    self._user_name_cache[open_id] = (name, time.monotonic())
+                    self._user_name_cache[open_id] = (name, now)
                     return name
         except Exception:
             logger.warning(f"Could not fetch user name for {open_id}", exc_info=True)
+        # Cache negative result to avoid repeated API calls
+        self._user_name_cache[open_id] = ("", now)
         return ""
 
     async def start(self) -> None:
