@@ -466,6 +466,16 @@ class AgentManager:
 
     async def update_agent(self, agent_id: str, **kwargs) -> dict:
         """Update agent fields in DB and reload the in-memory agent instance."""
+        if "sandbox_mode" in kwargs and kwargs["sandbox_mode"] not in (
+            "none",
+            "base",
+            "desktop",
+            "ssh",
+        ):
+            raise ValueError(
+                f"sandbox_mode must be 'none', 'base', 'desktop', or 'ssh', "
+                f"got: {kwargs['sandbox_mode']!r}"
+            )
         with self._session_factory() as session:
             record = session.query(AgentRecord).filter_by(agent_id=agent_id).first()
             if not record:

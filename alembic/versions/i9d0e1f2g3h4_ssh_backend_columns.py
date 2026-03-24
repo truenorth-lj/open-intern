@@ -18,7 +18,7 @@ depends_on = None
 def upgrade() -> None:
     op.add_column("agents", sa.Column("ssh_host", sa.String(), nullable=False, server_default=""))
     op.add_column(
-        "agents", sa.Column("ssh_port", sa.Integer(), nullable=False, server_default="22")
+        "agents", sa.Column("ssh_port", sa.Integer(), nullable=False, server_default=sa.text("22"))
     )
     op.add_column(
         "agents", sa.Column("ssh_user", sa.String(), nullable=False, server_default="user")
