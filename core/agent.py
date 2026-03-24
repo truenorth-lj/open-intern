@@ -320,6 +320,8 @@ class OpenInternAgent:
             inherit_env=True,
         )
 
+    _MAX_SKILL_FILE_SIZE = 1_000_000  # 1 MB
+
     def _seed_skills_to_sandbox(self) -> None:
         """Copy skill files from disk into the E2B sandbox filesystem."""
         if self._e2b_backend is None:
@@ -335,7 +337,7 @@ class OpenInternAgent:
             if not skill_dir.is_dir() or skill_dir.name.startswith((".", "_")):
                 continue
             for file_path in sorted(skill_dir.rglob("*")):
-                if not file_path.is_file() or file_path.stat().st_size > 1_000_000:
+                if not file_path.is_file() or file_path.stat().st_size > self._MAX_SKILL_FILE_SIZE:
                     continue
                 relative = file_path.relative_to(skills_dir)
                 sandbox_path = f"/home/user/skills/{relative.as_posix()}"

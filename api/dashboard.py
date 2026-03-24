@@ -220,7 +220,7 @@ async def pause_sandbox(agent_id: str, user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=500, detail="Sandbox pause returned no ID")
     except Exception as e:
         logger.error(f"Failed to pause sandbox for {agent_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to pause: {e}")
+        raise HTTPException(status_code=500, detail="Failed to pause sandbox")
 
 
 @router.post("/agents/{agent_id}/sandbox/resume")
@@ -242,12 +242,15 @@ async def resume_sandbox(agent_id: str, user: dict = Depends(get_current_user)):
     try:
         backend.connect()
         new_id = backend.sandbox_id
-        if new_id:
-            mgr._update_sandbox_id(agent_id, new_id)
+        if not new_id:
+            raise HTTPException(status_code=500, detail="Sandbox resume did not return a valid ID")
+        mgr._update_sandbox_id(agent_id, new_id)
         return {"ok": True, "agent_id": agent_id, "sandbox_id": new_id, "status": "running"}
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to resume sandbox for {agent_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to resume: {e}")
+        raise HTTPException(status_code=500, detail="Failed to resume sandbox")
 
 
 @router.post("/agents/{agent_id}/desktop-stream")
