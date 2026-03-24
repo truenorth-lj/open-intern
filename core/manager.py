@@ -117,8 +117,8 @@ class AgentManager:
                 except Exception as e:
                     logger.error(f"Failed to sync-init agent {rec.agent_id}: {e}")
 
-    def _init_agent_sync(self, rec: AgentRecord) -> OpenInternAgent:
-        """Create agent, run sync init only. Async init happens later."""
+    def _create_agent(self, rec: AgentRecord) -> OpenInternAgent:
+        """Create an OpenInternAgent from a DB record (no initialization)."""
         agent_config = self._build_agent_config(rec)
 
         extra_tools: list = []
@@ -127,7 +127,7 @@ class AgentManager:
 
             extra_tools = create_scheduler_tools(self._scheduler, rec.agent_id)
 
-        agent = OpenInternAgent(
+        return OpenInternAgent(
             agent_config,
             agent_id=rec.agent_id,
             sandbox_mode=rec.sandbox_mode,
@@ -138,11 +138,18 @@ class AgentManager:
             ssh_user=rec.ssh_user,
             ssh_key=decrypt(rec.ssh_key_encrypted),
         )
-        agent.initialize_sync()
-        # Persist E2B sandbox ID back to DB if newly created
+
+    def _register_agent(self, agent: OpenInternAgent, rec: AgentRecord) -> None:
+        """Persist sandbox ID and register agent in the manager."""
         if agent._e2b_backend and agent._e2b_backend.sandbox_id:
             self._update_sandbox_id(rec.agent_id, agent._e2b_backend.sandbox_id)
         self._agents[rec.agent_id] = agent
+
+    def _init_agent_sync(self, rec: AgentRecord) -> OpenInternAgent:
+        """Create agent, run sync init only. Async init happens later."""
+        agent = self._create_agent(rec)
+        agent.initialize_sync()
+        self._register_agent(agent, rec)
         return agent
 
     def _load_agents(self) -> None:
@@ -151,36 +158,16 @@ class AgentManager:
             records = session.query(AgentRecord).filter_by(is_active=True).all()
             for rec in records:
                 try:
-                    self._init_agent_from_record(rec)
+                    self._init_agent_full_sync(rec)
                     logger.info(f"Loaded agent: {rec.agent_id} ({rec.name})")
                 except Exception as e:
                     logger.error(f"Failed to load agent {rec.agent_id}: {e}")
 
-    def _init_agent_from_record(self, rec: AgentRecord) -> OpenInternAgent:
+    def _init_agent_full_sync(self, rec: AgentRecord) -> OpenInternAgent:
         """Create and fully initialize an agent (sync path for CLI/tests)."""
-        agent_config = self._build_agent_config(rec)
-
-        extra_tools: list = []
-        if self._scheduler:
-            from core.scheduler import create_scheduler_tools
-
-            extra_tools = create_scheduler_tools(self._scheduler, rec.agent_id)
-
-        agent = OpenInternAgent(
-            agent_config,
-            agent_id=rec.agent_id,
-            sandbox_mode=rec.sandbox_mode,
-            e2b_sandbox_id=rec.e2b_sandbox_id,
-            extra_tools=extra_tools,
-            ssh_host=rec.ssh_host,
-            ssh_port=rec.ssh_port,
-            ssh_user=rec.ssh_user,
-            ssh_key=decrypt(rec.ssh_key_encrypted),
-        )
+        agent = self._create_agent(rec)
         agent.initialize()
-        if agent._e2b_backend and agent._e2b_backend.sandbox_id:
-            self._update_sandbox_id(rec.agent_id, agent._e2b_backend.sandbox_id)
-        self._agents[rec.agent_id] = agent
+        self._register_agent(agent, rec)
         return agent
 
     def _update_sandbox_id(self, agent_id: str, sandbox_id: str) -> None:
@@ -233,7 +220,7 @@ class AgentManager:
             if not record or not record.is_active:
                 return
             try:
-                self._init_agent_from_record(record)
+                self._init_agent_full_sync(record)
                 logger.info(f"Reloaded agent runtime: {agent_id}")
             except Exception as e:
                 logger.error(f"Failed to reload agent {agent_id}: {e}")

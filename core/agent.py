@@ -329,12 +329,12 @@ async def _load_skills_prompt(store, agent_id: str) -> str:
 
 
 def _build_graph(
-    llm,
-    tools: list,
+    llm: Any,
+    tools: list[Any],
     system_prompt: str,
-    checkpointer,
-    store,
-):
+    checkpointer: Any,
+    store: Any,
+) -> Any:
     """Build a LangGraph StateGraph with agent + tool nodes.
 
     Returns a compiled graph that supports ainvoke/astream_events.
@@ -432,6 +432,50 @@ class OpenInternAgent:
     def _agent(self):
         return self._graph
 
+    # ------------------------------------------------------------------
+    # Shared init helpers (used by both async and sync paths)
+    # ------------------------------------------------------------------
+
+    def _register_backend_callbacks(self) -> None:
+        """Register E2B/SSH sandbox callbacks (reconnect, idle, skills)."""
+        if self._e2b_backend is None:
+            return
+        if self.sandbox_mode in ("base", "desktop"):
+            self._restore_sandbox_from_r2()
+            self._seed_skills_to_sandbox()
+            self._e2b_backend._on_reconnect = [
+                self._restore_sandbox_from_r2,
+                self._seed_skills_to_sandbox,
+            ]
+            self._e2b_backend._on_idle = [self._backup_sandbox_to_r2]
+            logger.info("Backend ready (E2B unified — files + shell in sandbox)")
+        elif self.sandbox_mode == "ssh":
+            self._seed_skills_to_sandbox()
+            logger.info("Backend ready (SSH — remote machine)")
+
+    def _collect_tools(self, system_prompt: str) -> tuple[list[Any], str]:
+        """Collect all tools and build final system prompt. Returns (tools, prompt)."""
+        all_tools: list[Any] = list(self._memory_tools) + list(self.extra_tools)
+        if self._e2b_backend is not None:
+            backend = self._shell_backend
+            fs_tools = create_filesystem_tools(lambda: backend)
+            all_tools.extend(fs_tools)
+        return all_tools, system_prompt
+
+    def _compile_graph(self, tools: list[Any], system_prompt: str) -> None:
+        """Build and compile the LangGraph StateGraph."""
+        self._graph = _build_graph(
+            llm=self._llm,
+            tools=tools,
+            system_prompt=system_prompt,
+            checkpointer=self._checkpointer,
+            store=self._store,
+        )
+
+    # ------------------------------------------------------------------
+    # Two-phase init (server path: sync init → async init on uvicorn loop)
+    # ------------------------------------------------------------------
+
     def initialize_sync(self) -> None:
         """Phase 1 (sync): Initialize memory, LLM, safety, backend.
 
@@ -475,28 +519,13 @@ class OpenInternAgent:
         await self._store.setup()
         logger.info("AsyncPostgresStore ready")
 
-        # Seed skills from disk into store
         from scripts.seed_skills import seed_skills_async
 
         n = await seed_skills_async(self._store, agent_id=self.agent_id)
         if n:
             logger.info(f"Seeded {n} skill file(s) into store")
 
-        # Handle E2B sandbox setup
-        if self.sandbox_mode in ("base", "desktop") and self._e2b_backend is not None:
-            self._restore_sandbox_from_r2()
-            self._seed_skills_to_sandbox()
-            # Register reconnect callbacks so data is restored after sandbox expiry
-            self._e2b_backend._on_reconnect = [
-                self._restore_sandbox_from_r2,
-                self._seed_skills_to_sandbox,
-            ]
-            # Register idle callback — backup to R2 before pausing
-            self._e2b_backend._on_idle = [self._backup_sandbox_to_r2]
-            logger.info("Backend ready (E2B unified — files + shell in sandbox)")
-        elif self.sandbox_mode == "ssh" and self._e2b_backend is not None:
-            self._seed_skills_to_sandbox()
-            logger.info("Backend ready (SSH — remote machine)")
+        self._register_backend_callbacks()
 
         # Load skills into system prompt
         skills_prompt = await _load_skills_prompt(self._store, self.agent_id)
@@ -504,42 +533,24 @@ class OpenInternAgent:
         if skills_prompt:
             system_prompt += "\n" + skills_prompt
 
-        # Collect all tools
-        all_tools = list(self._memory_tools) + list(self.extra_tools)
-
-        # Add filesystem tools if we have a sandbox backend
-        if self._e2b_backend is not None:
-            backend = self._shell_backend
-            fs_tools = create_filesystem_tools(lambda: backend)
-            all_tools.extend(fs_tools)
-
-        # Build and compile the graph
-        self._graph = _build_graph(
-            llm=self._llm,
-            tools=all_tools,
-            system_prompt=system_prompt,
-            checkpointer=self._checkpointer,
-            store=self._store,
-        )
+        all_tools, system_prompt = self._collect_tools(system_prompt)
+        self._compile_graph(all_tools, system_prompt)
         logger.info(f"Agent '{self.config.identity.name}' fully initialized (async)")
 
+    # ------------------------------------------------------------------
+    # Single-phase init (CLI / test path: everything sync, no event loop)
+    # ------------------------------------------------------------------
+
     def initialize(self) -> None:
-        """Legacy sync initialize — for CLI and tests.
+        """Sync-only initialize — for CLI and tests.
 
         Creates sync PostgresSaver (not async) for contexts without an event loop.
+        Reuses initialize_sync() for the first phase, then does sync checkpointer/store.
         """
-        self.memory_store.initialize()
-        logger.info("Memory store ready")
+        # Phase 1: reuse sync init (memory, LLM, backend)
+        self.initialize_sync()
 
-        self._llm = _create_llm(self.config)
-        logger.info(f"LLM ready: {self.config.llm.provider}:{self.config.llm.model}")
-
-        system_prompt = build_system_prompt(self.config)
-
-        memory_tools = create_memory_tools(self.memory_store)
-        all_tools = memory_tools + self.extra_tools
-
-        # Create sync checkpointer (for CLI usage)
+        # Phase 2 (sync): checkpointer + store + graph compilation
         from langgraph.checkpoint.postgres import PostgresSaver
         from psycopg import Connection
         from psycopg.rows import dict_row
@@ -554,7 +565,6 @@ class OpenInternAgent:
         self._checkpointer.setup()
         logger.info("Checkpointer ready (PostgreSQL, sync)")
 
-        # Create sync PostgresStore
         from langgraph.store.postgres import PostgresStore
 
         self._store_ctx = PostgresStore.from_conn_string(self.config.database_url)
@@ -562,46 +572,18 @@ class OpenInternAgent:
         self._store.setup()
         logger.info("PostgresStore ready (sync)")
 
-        # Seed skills
         from scripts.seed_skills import seed_skills
 
         n = seed_skills(self._store, agent_id=self.agent_id)
         if n:
             logger.info(f"Seeded {n} skill file(s) into store")
 
-        # Create backend
-        self._shell_backend = self._create_shell_backend()
+        self._register_backend_callbacks()
 
-        if self.sandbox_mode in ("base", "desktop") and self._e2b_backend is not None:
-            self._restore_sandbox_from_r2()
-            self._seed_skills_to_sandbox()
-            # Register reconnect callbacks so data is restored after sandbox expiry
-            self._e2b_backend._on_reconnect = [
-                self._restore_sandbox_from_r2,
-                self._seed_skills_to_sandbox,
-            ]
-            # Register idle callback — backup to R2 before pausing
-            self._e2b_backend._on_idle = [self._backup_sandbox_to_r2]
-
-            backend = self._shell_backend
-            fs_tools = create_filesystem_tools(lambda: backend)
-            all_tools.extend(fs_tools)
-            logger.info("Backend ready (E2B unified)")
-        elif self.sandbox_mode == "ssh" and self._e2b_backend is not None:
-            self._seed_skills_to_sandbox()
-            backend = self._shell_backend
-            fs_tools = create_filesystem_tools(lambda: backend)
-            all_tools.extend(fs_tools)
-            logger.info("Backend ready (SSH — remote machine)")
-
-        # Build graph (with sync checkpointer — ainvoke still works)
-        self._graph = _build_graph(
-            llm=self._llm,
-            tools=all_tools,
-            system_prompt=system_prompt,
-            checkpointer=self._checkpointer,
-            store=self._store,
-        )
+        # Build system prompt with skills
+        system_prompt = self._base_system_prompt
+        all_tools, system_prompt = self._collect_tools(system_prompt)
+        self._compile_graph(all_tools, system_prompt)
         logger.info(f"Agent '{self.config.identity.name}' initialized (sync)")
 
     def _create_shell_backend(self):
