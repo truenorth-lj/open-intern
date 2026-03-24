@@ -391,12 +391,20 @@ class OpenInternAgent:
         sandbox_mode: str = "base",
         e2b_sandbox_id: str = "",
         extra_tools: list | None = None,
+        ssh_host: str = "",
+        ssh_port: int = 22,
+        ssh_user: str = "user",
+        ssh_key: str = "",
     ):
         self.config = config
         self.agent_id = agent_id
-        self.sandbox_mode = sandbox_mode  # "none" | "base" | "desktop"
+        self.sandbox_mode = sandbox_mode  # "none" | "base" | "desktop" | "ssh"
         self.e2b_sandbox_id = e2b_sandbox_id
         self.extra_tools = extra_tools or []
+        self.ssh_host = ssh_host
+        self.ssh_port = ssh_port
+        self.ssh_user = ssh_user
+        self.ssh_key = ssh_key
         self.memory_store = MemoryStore(config.database_url, agent_id=agent_id)
         self.safety = SafetyMiddleware(config)
         self.cost_guard = CostGuard(
@@ -486,6 +494,9 @@ class OpenInternAgent:
             # Register idle callback — backup to R2 before pausing
             self._e2b_backend._on_idle = [self._backup_sandbox_to_r2]
             logger.info("Backend ready (E2B unified — files + shell in sandbox)")
+        elif self.sandbox_mode == "ssh" and self._e2b_backend is not None:
+            self._seed_skills_to_sandbox()
+            logger.info("Backend ready (SSH — remote machine)")
 
         # Load skills into system prompt
         skills_prompt = await _load_skills_prompt(self._store, self.agent_id)
@@ -576,6 +587,12 @@ class OpenInternAgent:
             fs_tools = create_filesystem_tools(lambda: backend)
             all_tools.extend(fs_tools)
             logger.info("Backend ready (E2B unified)")
+        elif self.sandbox_mode == "ssh" and self._e2b_backend is not None:
+            self._seed_skills_to_sandbox()
+            backend = self._shell_backend
+            fs_tools = create_filesystem_tools(lambda: backend)
+            all_tools.extend(fs_tools)
+            logger.info("Backend ready (SSH — remote machine)")
 
         # Build graph (with sync checkpointer — ainvoke still works)
         self._graph = _build_graph(
@@ -588,7 +605,10 @@ class OpenInternAgent:
         logger.info(f"Agent '{self.config.identity.name}' initialized (sync)")
 
     def _create_shell_backend(self):
-        """Create the shell backend based on sandbox_mode: none | base | desktop."""
+        """Create the shell backend based on sandbox_mode: none | base | desktop | ssh."""
+        if self.sandbox_mode == "ssh":
+            return self._create_ssh_backend()
+
         if self.sandbox_mode in ("base", "desktop"):
             try:
                 api_key = os.environ.get("E2B_API_KEY", "")
@@ -631,6 +651,39 @@ class OpenInternAgent:
                 logger.error(f"E2B sandbox failed: {e}. Continuing without sandbox.")
 
         # No shell backend for non-sandbox mode
+        return None
+
+    def _create_ssh_backend(self):
+        """Create an SSH backend for remote machine access."""
+        if not self.ssh_host:
+            logger.error(
+                f"SSH sandbox enabled for agent {self.agent_id} but ssh_host not set. "
+                "Continuing without sandbox — file/shell tools disabled."
+            )
+            return None
+        try:
+            from core.ssh_backend import SSHBackend, SSHConnectionInfo
+
+            conn = SSHConnectionInfo(
+                host=self.ssh_host,
+                port=self.ssh_port,
+                username=self.ssh_user,
+                private_key=self.ssh_key,
+            )
+            backend = SSHBackend(agent_id=self.agent_id, connection=conn)
+            self._e2b_backend = backend  # reuse same attribute for protocol compat
+            logger.info(
+                f"SSH backend configured for agent {self.agent_id}: "
+                f"{self.ssh_user}@{self.ssh_host}:{self.ssh_port}"
+            )
+            return backend
+        except ImportError:
+            logger.warning(
+                "paramiko package not installed — SSH backend disabled. "
+                "Install with: pip install paramiko"
+            )
+        except Exception as e:
+            logger.error(f"SSH backend failed: {e}. Continuing without sandbox.")
         return None
 
     _MAX_SKILL_FILE_SIZE = 1_000_000  # 1 MB

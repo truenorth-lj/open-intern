@@ -77,7 +77,11 @@ class AgentCreate(BaseModel):
     embedding_model: str = "text-embedding-3-small"
     max_retrieval_results: int = Field(10, ge=1)
     importance_decay_days: int = Field(90, ge=1)
-    sandbox_mode: str = "base"  # "none" | "base" | "desktop"
+    sandbox_mode: str = "base"  # "none" | "base" | "desktop" | "ssh"
+    ssh_host: str = ""
+    ssh_port: int = 22
+    ssh_user: str = "user"
+    ssh_key: str = ""
 
 
 class AgentUpdate(BaseModel):
@@ -103,7 +107,11 @@ class AgentUpdate(BaseModel):
     embedding_model: str | None = None
     max_retrieval_results: int | None = None
     importance_decay_days: int | None = None
-    sandbox_mode: str | None = None  # "none" | "base" | "desktop"
+    sandbox_mode: str | None = None  # "none" | "base" | "desktop" | "ssh"
+    ssh_host: str | None = None
+    ssh_port: int | None = None
+    ssh_user: str | None = None
+    ssh_key: str | None = None
     is_active: bool | None = None
 
 
@@ -430,7 +438,7 @@ async def get_desktop_stream(agent_id: str, user: dict = Depends(get_current_use
 
 
 def _get_sandbox_backend(agent_id: str, user: dict):
-    """Helper: validate access and return the E2B backend or raise."""
+    """Helper: validate access and return the sandbox backend (E2B or SSH) or raise."""
     accessible = get_user_accessible_agents(user)
     if accessible is not None and agent_id not in accessible:
         raise HTTPException(status_code=403, detail="Access denied")
@@ -442,7 +450,7 @@ def _get_sandbox_backend(agent_id: str, user: dict):
 
     backend = agent._e2b_backend
     if backend is None:
-        raise HTTPException(status_code=400, detail="Agent has no E2B sandbox")
+        raise HTTPException(status_code=400, detail="Agent has no sandbox backend configured")
     return backend
 
 

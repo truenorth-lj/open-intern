@@ -58,6 +58,10 @@ export default function AgentSettingsPage({
     llm_temperature: 0.7,
     llm_api_key: "",
     sandbox_mode: "base",
+    ssh_host: "",
+    ssh_port: 22,
+    ssh_user: "user",
+    ssh_key: "",
     platform_type: "",
     telegram_token: "",
     discord_token: "",
@@ -107,6 +111,10 @@ export default function AgentSettingsPage({
         llm_temperature: data.llm_temperature,
         llm_api_key: "",
         sandbox_mode: data.sandbox_mode || "base",
+        ssh_host: data.ssh_host || "",
+        ssh_port: data.ssh_port || 22,
+        ssh_user: data.ssh_user || "user",
+        ssh_key: "",
         platform_type: data.platform_type || "",
         telegram_token: "",
         discord_token: "",
@@ -168,13 +176,14 @@ export default function AgentSettingsPage({
 
   async function handleSave() {
     setMsg("");
-    const { llm_api_key, telegram_token, discord_token, lark_app_id, lark_app_secret, ...rest } = form;
+    const { llm_api_key, telegram_token, discord_token, lark_app_id, lark_app_secret, ssh_key, ...rest } = form;
     const payload: Record<string, unknown> = { ...rest };
     if (llm_api_key) payload.llm_api_key = llm_api_key;
     if (telegram_token) payload.telegram_token = telegram_token;
     if (discord_token) payload.discord_token = discord_token;
     if (lark_app_id) payload.lark_app_id = lark_app_id;
     if (lark_app_secret) payload.lark_app_secret = lark_app_secret;
+    if (ssh_key) payload.ssh_key = ssh_key;
 
     try {
       await updateAgent(agentId, payload);
@@ -423,9 +432,65 @@ export default function AgentSettingsPage({
                         <option value="none">None (local shell)</option>
                         <option value="base">Base (CLI sandbox)</option>
                         <option value="desktop">Desktop (GUI + browser)</option>
+                        <option value="ssh">SSH (remote machine)</option>
                       </select>
                     </div>
                   </div>
+
+                  {form.sandbox_mode === "ssh" && (
+                    <div className="rounded-md border p-4 space-y-4">
+                      <h4 className="text-sm font-medium">SSH Connection</h4>
+                      <p className="text-xs text-muted-foreground">
+                        Connect to a remote machine (Mac Mini, Raspberry Pi, cloud VM, etc.) via SSH.
+                      </p>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="space-y-2 md:col-span-2">
+                          <Label htmlFor="ssh-host">Host</Label>
+                          <Input
+                            id="ssh-host"
+                            placeholder="192.168.1.100 or hostname"
+                            value={form.ssh_host}
+                            onChange={(e) => setForm((f) => ({ ...f, ssh_host: e.target.value }))}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="ssh-port">Port</Label>
+                          <Input
+                            id="ssh-port"
+                            type="number"
+                            value={form.ssh_port}
+                            onChange={(e) =>
+                              setForm((f) => ({ ...f, ssh_port: parseInt(e.target.value) || 22 }))
+                            }
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="ssh-user">Username</Label>
+                        <Input
+                          id="ssh-user"
+                          placeholder="user"
+                          value={form.ssh_user}
+                          onChange={(e) => setForm((f) => ({ ...f, ssh_user: e.target.value }))}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="ssh-key">Private Key (PEM)</Label>
+                        <Textarea
+                          id="ssh-key"
+                          rows={4}
+                          placeholder={agent?.ssh_key === "***" ? "(encrypted — leave blank to keep)" : "-----BEGIN OPENSSH PRIVATE KEY-----\n...\n-----END OPENSSH PRIVATE KEY-----"}
+                          value={form.ssh_key}
+                          onChange={(e) => setForm((f) => ({ ...f, ssh_key: e.target.value }))}
+                          className="font-mono text-xs"
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Paste your SSH private key. Leave blank to use password auth or ssh-agent.
+                          The key is encrypted at rest.
+                        </p>
+                      </div>
+                    </div>
+                  )}
 
                   <Button type="button" onClick={handleSave}>Save Changes</Button>
               </CardContent>

@@ -257,7 +257,11 @@ export interface AgentInfo {
   lark_app_id: string;
   lark_app_secret: string;
   platform_type: string;
-  sandbox_mode: string; // "none" | "base" | "desktop"
+  sandbox_mode: string; // "none" | "base" | "desktop" | "ssh"
+  ssh_host: string;
+  ssh_port: number;
+  ssh_user: string;
+  ssh_key: string;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -281,6 +285,10 @@ export async function createAgent(data: {
   llm_api_key?: string;
   telegram_token?: string;
   sandbox_mode?: string;
+  ssh_host?: string;
+  ssh_port?: number;
+  ssh_user?: string;
+  ssh_key?: string;
 }) {
   const res = await apiFetch("/agents", {
     method: "POST",

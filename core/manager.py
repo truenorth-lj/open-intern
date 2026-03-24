@@ -38,6 +38,7 @@ _ENCRYPTED_FIELDS = {
     "lark_app_secret",
     "slack_bot_token",
     "slack_app_token",
+    "ssh_key",
 }
 
 
@@ -132,6 +133,10 @@ class AgentManager:
             sandbox_mode=rec.sandbox_mode,
             e2b_sandbox_id=rec.e2b_sandbox_id,
             extra_tools=extra_tools,
+            ssh_host=rec.ssh_host,
+            ssh_port=rec.ssh_port,
+            ssh_user=rec.ssh_user,
+            ssh_key=decrypt(rec.ssh_key_encrypted),
         )
         agent.initialize_sync()
         # Persist E2B sandbox ID back to DB if newly created
@@ -167,6 +172,10 @@ class AgentManager:
             sandbox_mode=rec.sandbox_mode,
             e2b_sandbox_id=rec.e2b_sandbox_id,
             extra_tools=extra_tools,
+            ssh_host=rec.ssh_host,
+            ssh_port=rec.ssh_port,
+            ssh_user=rec.ssh_user,
+            ssh_key=decrypt(rec.ssh_key_encrypted),
         )
         agent.initialize()
         if agent._e2b_backend and agent._e2b_backend.sandbox_id:
@@ -334,6 +343,10 @@ class AgentManager:
                     "max_retrieval_results": r.max_retrieval_results,
                     "importance_decay_days": r.importance_decay_days,
                     "sandbox_mode": r.sandbox_mode,
+                    "ssh_host": r.ssh_host,
+                    "ssh_port": r.ssh_port,
+                    "ssh_user": r.ssh_user,
+                    "ssh_key": "***" if r.ssh_key_encrypted else "",
                     "is_active": r.is_active,
                     "created_at": r.created_at.isoformat() if r.created_at else "",
                     "updated_at": r.updated_at.isoformat() if r.updated_at else "",
@@ -367,11 +380,15 @@ class AgentManager:
         max_retrieval_results: int = 10,
         importance_decay_days: int = 90,
         sandbox_mode: str = "base",
+        ssh_host: str = "",
+        ssh_port: int = 22,
+        ssh_user: str = "user",
+        ssh_key: str = "",
     ) -> dict:
         """Create a new agent in DB and initialize it. Secrets are encrypted before storage."""
-        if sandbox_mode not in ("none", "base", "desktop"):
+        if sandbox_mode not in ("none", "base", "desktop", "ssh"):
             raise ValueError(
-                f"sandbox_mode must be 'none', 'base', or 'desktop', got: {sandbox_mode!r}"
+                f"sandbox_mode must be 'none', 'base', 'desktop', or 'ssh', got: {sandbox_mode!r}"
             )
         if not _AGENT_ID_RE.match(agent_id):
             raise ValueError(
@@ -413,6 +430,10 @@ class AgentManager:
             max_retrieval_results=max_retrieval_results,
             importance_decay_days=importance_decay_days,
             sandbox_mode=sandbox_mode,
+            ssh_host=ssh_host,
+            ssh_port=ssh_port,
+            ssh_user=ssh_user,
+            ssh_key_encrypted=encrypt(ssh_key),
             is_active=True,
             created_at=now,
             updated_at=now,
@@ -466,6 +487,9 @@ class AgentManager:
                 "max_retrieval_results",
                 "importance_decay_days",
                 "sandbox_mode",
+                "ssh_host",
+                "ssh_port",
+                "ssh_user",
                 "is_active",
             }
             for key, value in kwargs.items():

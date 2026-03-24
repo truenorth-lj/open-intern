@@ -102,9 +102,15 @@ class AgentRecord(Base):
     max_retrieval_results = Column(Integer, nullable=False, default=10)
     importance_decay_days = Column(Integer, nullable=False, default=90)
 
-    # Sandbox config: "none" | "base" | "desktop"
+    # Sandbox config: "none" | "base" | "desktop" | "ssh"
     sandbox_mode = Column(String, nullable=False, default="base")
     e2b_sandbox_id = Column(String, nullable=False, default="")
+
+    # SSH backend config (used when sandbox_mode="ssh")
+    ssh_host = Column(String, nullable=False, default="")
+    ssh_port = Column(Integer, nullable=False, default=22)
+    ssh_user = Column(String, nullable=False, default="user")
+    ssh_key_encrypted = Column(Text, nullable=False, default="")
 
     is_active = Column(Boolean, nullable=False, default=True)
     created_at = Column(DateTime(timezone=True), nullable=False)
