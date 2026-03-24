@@ -3,7 +3,11 @@ import { NextRequest, NextResponse } from "next/server";
 export async function middleware(request: NextRequest) {
   // Allow login page and auth API without token
   const { pathname } = request.nextUrl;
-  if (pathname === "/login" || pathname.startsWith("/api/auth/")) {
+  if (
+    pathname === "/login" ||
+    pathname.startsWith("/api/auth/") ||
+    pathname.startsWith("/api/dashboard/")
+  ) {
     return NextResponse.next();
   }
 
