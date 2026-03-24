@@ -61,6 +61,8 @@ export default function ScheduledJobsPage({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [actionMsg, setActionMsg] = useState("");
+  const [pendingAction, setPendingAction] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   async function loadJobs() {
     try {
@@ -79,17 +81,22 @@ export default function ScheduledJobsPage({
   }, [agentId]);
 
   async function handleAction(
+    jobId: string,
     action: () => Promise<void>,
     successMsg: string,
   ) {
     try {
+      setPendingAction(jobId);
       setActionMsg("");
       setError("");
       await action();
       setActionMsg(successMsg);
+      setConfirmDeleteId(null);
       await loadJobs();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Action failed");
+    } finally {
+      setPendingAction(null);
     }
   }
 
@@ -191,21 +198,25 @@ export default function ScheduledJobsPage({
                         <Button
                           variant="outline"
                           size="sm"
+                          disabled={pendingAction !== null}
                           onClick={() =>
                             handleAction(
+                              job.id,
                               () => triggerScheduledJob(job.id),
                               `Triggered "${job.name}"`,
                             )
                           }
                         >
-                          Run
+                          {pendingAction === job.id ? "..." : "Run"}
                         </Button>
                         {job.enabled ? (
                           <Button
                             variant="outline"
                             size="sm"
+                            disabled={pendingAction !== null}
                             onClick={() =>
                               handleAction(
+                                job.id,
                                 () => pauseScheduledJob(job.id),
                                 `Paused "${job.name}"`,
                               )
@@ -217,8 +228,10 @@ export default function ScheduledJobsPage({
                           <Button
                             variant="outline"
                             size="sm"
+                            disabled={pendingAction !== null}
                             onClick={() =>
                               handleAction(
+                                job.id,
                                 () => resumeScheduledJob(job.id),
                                 `Resumed "${job.name}"`,
                               )
@@ -227,18 +240,40 @@ export default function ScheduledJobsPage({
                             Resume
                           </Button>
                         )}
-                        <Button
-                          variant="destructive"
-                          size="sm"
-                          onClick={() =>
-                            handleAction(
-                              () => deleteScheduledJob(job.id),
-                              `Deleted "${job.name}"`,
-                            )
-                          }
-                        >
-                          Delete
-                        </Button>
+                        {confirmDeleteId === job.id ? (
+                          <div className="flex gap-1">
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              disabled={pendingAction !== null}
+                              onClick={() =>
+                                handleAction(
+                                  job.id,
+                                  () => deleteScheduledJob(job.id),
+                                  `Deleted "${job.name}"`,
+                                )
+                              }
+                            >
+                              Confirm
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setConfirmDeleteId(null)}
+                            >
+                              Cancel
+                            </Button>
+                          </div>
+                        ) : (
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            disabled={pendingAction !== null}
+                            onClick={() => setConfirmDeleteId(job.id)}
+                          >
+                            Delete
+                          </Button>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>
