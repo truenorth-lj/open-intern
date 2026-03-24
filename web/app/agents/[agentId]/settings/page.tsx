@@ -807,6 +807,9 @@ export default function AgentSettingsPage({
         <Link href={`/agents/${agentId}/skills`}>
           <Button variant="outline" size="sm">Skills</Button>
         </Link>
+        <Link href={`/agents/${agentId}/scheduled-jobs`}>
+          <Button variant="outline" size="sm">Scheduled Jobs</Button>
+        </Link>
       </div>
     </div>
   );

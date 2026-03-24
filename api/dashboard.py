@@ -1233,7 +1233,7 @@ def _get_scheduler():
 
 
 _VALID_SCHEDULE_TYPES = {"cron", "interval", "once"}
-_VALID_DELIVERY_PLATFORMS = {"", "telegram", "discord"}
+_VALID_DELIVERY_PLATFORMS = {"", "lark", "telegram", "discord"}
 
 
 class ScheduledJobCreate(BaseModel):
