@@ -458,11 +458,13 @@ def create_scheduler_tools(scheduler: CronScheduler, agent_id: str) -> list:
             prompt: The message/instruction to execute when the job triggers.
             timezone: IANA timezone (default "UTC"). E.g., "Asia/Shanghai", "US/Eastern".
             channel_id: Optional channel for memory scoping.
-            delivery_platform: Platform to deliver results to ("telegram", "discord",
-                or "" for no delivery). When set, the job response is sent to the
-                specified chat after execution.
+            delivery_platform: Platform to deliver results to ("lark", "telegram",
+                "discord", or "" for no delivery). When set, the job response is
+                sent to the specified chat after execution. IMPORTANT: Always set
+                this to the current platform so the user receives the response.
             delivery_chat_id: The chat/channel ID on the delivery platform
-                (e.g., Telegram chat_id, Discord channel_id).
+                (e.g., Lark chat_id, Telegram chat_id, Discord channel_id).
+                IMPORTANT: Always set this to the current channel_id from context.
             isolated: If True, each run uses a fresh conversation thread (no memory
                 of previous runs). If False (default), all runs share the same thread
                 so the agent can reference prior executions.

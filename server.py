@@ -100,6 +100,7 @@ def create_app(config: AppConfig) -> FastAPI:
     # Initialize state containers for platform bots
     app.state.telegram_bots: dict = {}
     app.state.discord_bots: dict = {}
+    app.state.lark_bots: dict = {}
     app.state.default_agent = None
 
     # CORS
@@ -279,6 +280,7 @@ async def _setup_platform_bots(
                 app_secret = decrypt(record.lark_app_secret_encrypted)
                 bot = LarkBot(agent, app_id=app_id, app_secret=app_secret)
                 await bot.start()
+                app.state.lark_bots[agent_id] = bot
                 logger.info(f"Lark bot started (WebSocket) for agent {agent_id}")
             except Exception as e:
                 logger.error(f"Failed to setup Lark bot for agent {agent_id}: {e}")
