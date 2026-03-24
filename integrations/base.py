@@ -90,7 +90,7 @@ class Integration(ABC):
         except Exception as exc:
             logger.exception(f"Agent chat failed for event from {event.platform}")
             response = "Sorry, I encountered an error processing your message. Please try again."
-            if os.environ.get("DEBUG_BOT_ERRORS"):
+            if os.environ.get("DEBUG_BOT_ERRORS"):  # intentional: admin opt-in only
                 exc_name = type(exc).__name__
                 exc_msg = str(exc)[:200]
                 response += f"\n\n[debug: {exc_name}: {exc_msg}]"
