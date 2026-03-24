@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from abc import ABC, abstractmethod
 from typing import Any
 
@@ -88,12 +89,11 @@ class Integration(ABC):
             )
         except Exception as exc:
             logger.exception(f"Agent chat failed for event from {event.platform}")
-            exc_name = type(exc).__name__
-            exc_msg = str(exc)[:200]
-            response = (
-                f"Sorry, I encountered an error processing your message. "
-                f"Please try again.\n\n[debug: {exc_name}: {exc_msg}]"
-            )
+            response = "Sorry, I encountered an error processing your message. Please try again."
+            if os.environ.get("DEBUG_BOT_ERRORS"):
+                exc_name = type(exc).__name__
+                exc_msg = str(exc)[:200]
+                response += f"\n\n[debug: {exc_name}: {exc_msg}]"
 
         # Send response back
         if response:
