@@ -470,7 +470,7 @@ async def read_file(
     agent_id: str,
     path: str,
     offset: int = 0,
-    limit: int = 2000,
+    limit: int = Field(default=2000, ge=1, le=100_000),
     user: dict = Depends(get_current_user),
 ):
     """Read a file from the sandbox."""
@@ -489,7 +489,7 @@ async def read_file(
 
 
 class FileWriteRequest(BaseModel):
-    path: str
+    path: str = Field(..., min_length=1)
     content: str
 
 
@@ -514,7 +514,7 @@ async def write_file(
 
 
 class MkdirRequest(BaseModel):
-    path: str
+    path: str = Field(..., min_length=1)
 
 
 @router.post("/agents/{agent_id}/files/mkdir")
@@ -526,7 +526,9 @@ async def mkdir(
     """Create a directory in the sandbox."""
     backend = _get_sandbox_backend(agent_id, user)
     try:
-        result = await backend.aexecute(f"mkdir -p {body.path}")
+        import shlex
+
+        result = await backend.aexecute(f"mkdir -p {shlex.quote(body.path)}")
         if result.exit_code != 0:
             raise HTTPException(status_code=500, detail=result.output or "mkdir failed")
         return {"ok": True, "path": body.path}
