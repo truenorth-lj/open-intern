@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from collections.abc import AsyncIterator
@@ -188,7 +189,6 @@ class OpenInternAgent:
 
         # Create async checkpointer + store for conversation threading (PostgreSQL)
         # initialize() is called before the event loop starts, so asyncio.run() is safe.
-        import asyncio
 
         async def _setup_async_pg():
             from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
@@ -567,8 +567,6 @@ class OpenInternAgent:
             return
 
         # Get final state for token usage
-        import asyncio
-
         try:
             final_state = await asyncio.wait_for(
                 self._agent.aget_state(invoke_config),
@@ -596,8 +594,6 @@ class OpenInternAgent:
 
     async def _maybe_compact(self, invoke_config: dict) -> None:
         """Check if conversation needs compaction and perform it if so."""
-        import asyncio
-
         thread_id = invoke_config.get("configurable", {}).get("thread_id")
         if not thread_id:
             return
