@@ -28,8 +28,9 @@ class TestChunkMessage:
         chunks = chunk_message(msg, 12)
         # Should prefer splitting at newlines
         assert all(len(c) <= 12 for c in chunks)
-        # Content should be preserved (minus stripped newlines at split points)
         assert "line1" in chunks[0]
+        # Only the newline at split points is consumed
+        assert "\n".join(chunks) == msg
 
     def test_hard_split_when_no_newline(self):
         msg = "a" * 300  # No newlines

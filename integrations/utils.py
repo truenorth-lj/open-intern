@@ -6,8 +6,11 @@ from __future__ import annotations
 def chunk_message(content: str, max_size: int) -> list[str]:
     """Split a message into chunks that fit within a platform's size limit.
 
-    Splits at the last newline before the limit to preserve formatting.
-    Falls back to hard split if no newline is found.
+    Prefers splitting at newlines for readability. The newline at the split
+    point is consumed (not included in either chunk) to avoid leading/trailing
+    whitespace. Falls back to hard split if no newline is found.
+
+    Content is fully preserved except for the single newline at each split point.
     """
     if len(content) <= max_size:
         return [content]
@@ -21,9 +24,12 @@ def chunk_message(content: str, max_size: int) -> list[str]:
         # Try to split at last newline within limit
         split_at = remaining.rfind("\n", 0, max_size)
         if split_at <= 0:
-            # No newline found — hard split with some margin
+            # No newline found — hard split at limit
             split_at = max_size
-        chunk = remaining[:split_at]
-        chunks.append(chunk)
-        remaining = remaining[split_at:].lstrip("\n")
+            chunks.append(remaining[:split_at])
+            remaining = remaining[split_at:]
+        else:
+            # Split at newline: consume the newline itself
+            chunks.append(remaining[:split_at])
+            remaining = remaining[split_at + 1:]  # skip the \n
     return chunks
