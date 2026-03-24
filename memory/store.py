@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+from collections import OrderedDict
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
@@ -241,7 +242,7 @@ class MemoryStore:
         self.engine = get_engine(database_url)
         self._session_factory = get_session_factory(database_url)
         self.agent_id = agent_id
-        self._embedding_cache: dict[str, list[float]] = {}
+        self._embedding_cache: OrderedDict[str, list[float]] = OrderedDict()
 
     def initialize(self) -> None:
         """Verify database connection. Tables managed by Alembic migrations."""
@@ -472,12 +473,15 @@ class MemoryStore:
     def _get_embedding(self, text: str) -> list[float]:
         """Generate an embedding vector for text using OpenAI's API.
 
-        Uses an LRU-style cache to avoid redundant API calls.
+        Uses an LRU cache (OrderedDict) to avoid redundant API calls.
+        Recently accessed entries are moved to the end; eviction removes
+        the least recently used entry from the front.
         """
         import hashlib
 
-        cache_key = hashlib.md5(text.encode()).hexdigest()
+        cache_key = hashlib.md5(text.encode()).hexdigest()  # noqa: S324
         if cache_key in self._embedding_cache:
+            self._embedding_cache.move_to_end(cache_key)
             return self._embedding_cache[cache_key]
 
         import os
@@ -491,13 +495,9 @@ class MemoryStore:
         )
         embedding = response.data[0].embedding
 
-        # Evict oldest entries when cache is full (FIFO approximation)
-        if len(self._embedding_cache) >= self._EMBEDDING_CACHE_MAX:
-            # Remove first 10% of entries
-            evict_count = max(1, self._EMBEDDING_CACHE_MAX // 10)
-            keys_to_remove = list(self._embedding_cache.keys())[:evict_count]
-            for k in keys_to_remove:
-                del self._embedding_cache[k]
+        # Evict least recently used when cache is full
+        while len(self._embedding_cache) >= self._EMBEDDING_CACHE_MAX:
+            self._embedding_cache.popitem(last=False)
         self._embedding_cache[cache_key] = embedding
 
         return embedding
