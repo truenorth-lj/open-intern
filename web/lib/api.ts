@@ -436,3 +436,32 @@ export async function permanentlyDeleteAgent(agentId: string) {
   }
   return res.json();
 }
+
+// --- Desktop Stream ---
+
+export async function startDesktopStream(
+  agentId: string,
+): Promise<{ stream_url: string; agent_id: string }> {
+  const res = await apiFetch(`/agents/${agentId}/desktop-stream`, {
+    method: "POST",
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(extractErrorMessage(err, "Failed to start desktop stream"));
+  }
+  return res.json();
+}
+
+export async function stopDesktopStream(agentId: string): Promise<void> {
+  await apiFetch(`/agents/${agentId}/desktop-stream`, {
+    method: "DELETE",
+  });
+}
+
+export async function getDesktopStream(
+  agentId: string,
+): Promise<{ stream_url: string | null; agent_id: string; active: boolean }> {
+  const res = await apiFetch(`/agents/${agentId}/desktop-stream`);
+  if (!res.ok) return { stream_url: null, agent_id: agentId, active: false };
+  return res.json();
+}

@@ -17,6 +17,9 @@ import {
   createApiKey,
   listApiKeys,
   revokeApiKey,
+  startDesktopStream,
+  stopDesktopStream,
+  getDesktopStream,
   type AgentInfo,
   type ApiKeyInfo,
 } from "@/lib/api";
@@ -64,6 +67,11 @@ export default function AgentSettingsPage({
   const [testMsg, setTestMsg] = useState("");
   const [testLoading, setTestLoading] = useState(false);
 
+  // Desktop stream
+  const [streamUrl, setStreamUrl] = useState<string | null>(null);
+  const [streamLoading, setStreamLoading] = useState(false);
+  const [streamError, setStreamError] = useState("");
+
   // API keys
   const [apiKeys, setApiKeys] = useState<ApiKeyInfo[]>([]);
   const [apiKeyName, setApiKeyName] = useState("");
@@ -76,6 +84,7 @@ export default function AgentSettingsPage({
     if (authLoading) return;
     loadAgent();
     loadApiKeys();
+    loadStreamStatus();
   }, [authLoading, agentId]);
 
   async function loadAgent() {
@@ -110,6 +119,42 @@ export default function AgentSettingsPage({
       setApiKeys(data.api_keys);
     } catch {
       // ignore — may not have access
+    }
+  }
+
+  async function loadStreamStatus() {
+    try {
+      const data = await getDesktopStream(agentId);
+      if (data.active && data.stream_url) {
+        setStreamUrl(data.stream_url);
+      }
+    } catch {
+      // ignore — stream may not be available
+    }
+  }
+
+  async function handleStartStream() {
+    setStreamLoading(true);
+    setStreamError("");
+    try {
+      const data = await startDesktopStream(agentId);
+      setStreamUrl(data.stream_url);
+    } catch (err) {
+      setStreamError(err instanceof Error ? err.message : "Failed to start stream");
+    } finally {
+      setStreamLoading(false);
+    }
+  }
+
+  async function handleStopStream() {
+    setStreamLoading(true);
+    try {
+      await stopDesktopStream(agentId);
+      setStreamUrl(null);
+    } catch (err) {
+      setStreamError(err instanceof Error ? err.message : "Failed to stop stream");
+    } finally {
+      setStreamLoading(false);
     }
   }
 
@@ -473,6 +518,64 @@ export default function AgentSettingsPage({
             <p><span className="text-muted-foreground">Role:</span> {agent.role}</p>
             <p><span className="text-muted-foreground">Model:</span> {agent.llm_provider}:{agent.llm_model}</p>
             <p><span className="text-muted-foreground">Personality:</span> {agent.personality}</p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Desktop Stream — only shown when sandbox_mode is "desktop" */}
+      {(agent.sandbox_mode === "desktop" || form.sandbox_mode === "desktop") && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Desktop Stream</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              View the agent&apos;s desktop environment with browser in real-time via noVNC.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {streamError && (
+              <p className="text-sm text-destructive">{streamError}</p>
+            )}
+
+            {streamUrl ? (
+              <>
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="text-green-600 border-green-600">
+                    Streaming
+                  </Badge>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => window.open(streamUrl, "_blank")}
+                  >
+                    Open in New Tab
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleStopStream}
+                    disabled={streamLoading}
+                  >
+                    {streamLoading ? "Stopping..." : "Stop Stream"}
+                  </Button>
+                </div>
+                <div className="rounded-md border overflow-hidden bg-black">
+                  <iframe
+                    src={streamUrl}
+                    className="w-full border-0"
+                    style={{ height: "600px" }}
+                    allow="clipboard-read; clipboard-write"
+                    title="Desktop Stream"
+                  />
+                </div>
+              </>
+            ) : (
+              <Button
+                onClick={handleStartStream}
+                disabled={streamLoading}
+              >
+                {streamLoading ? "Starting Desktop..." : "Launch Desktop"}
+              </Button>
+            )}
           </CardContent>
         </Card>
       )}
