@@ -9,6 +9,7 @@ from abc import ABC, abstractmethod
 from typing import Any
 
 from core.agent import OpenInternAgent
+from core.telemetry import ERROR_TOTAL, PLATFORM_MESSAGE_TOTAL, set_correlation_id
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +84,10 @@ class Integration(ABC):
         if self._is_self(event):
             return None
 
+        # Set a correlation ID for this platform event
+        cid = str(uuid.uuid4())
+        set_correlation_id(cid)
+
         # Auto-capture contact from event
         try:
             await self._capture_contact(event)
@@ -102,6 +107,7 @@ class Integration(ABC):
         except Exception as exc:
             logger.exception(f"Agent chat failed for event from {event.platform}")
             last_exc = exc
+            ERROR_TOTAL.labels(category="platform").inc()
             # Retry with a fresh thread — corrupted checkpointer state
             # (e.g. orphaned tool calls, duplicate system messages) can cause
             # persistent failures on a thread.  A fresh thread_id gives the
@@ -113,6 +119,7 @@ class Integration(ABC):
                     fresh_thread,
                     thread_id,
                 )
+                PLATFORM_MESSAGE_TOTAL.labels(platform=event.platform, status="retry").inc()
                 try:
                     response, _token_usage = await self.agent.chat(
                         event.content,
@@ -133,6 +140,12 @@ class Integration(ABC):
                     exc_name = type(last_exc).__name__
                     exc_msg = str(last_exc)[:200]
                     response += f"\n\n[debug: {exc_name}: {exc_msg}]"
+
+        # Record platform message metric
+        if last_exc:
+            PLATFORM_MESSAGE_TOTAL.labels(platform=event.platform, status="error").inc()
+        else:
+            PLATFORM_MESSAGE_TOTAL.labels(platform=event.platform, status="ok").inc()
 
         # Send response back
         if response:

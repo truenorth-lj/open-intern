@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import time
 from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
@@ -19,6 +20,12 @@ from core.config import AppConfig
 from core.cost_guard import BudgetExceededError, CostGuard, RateLimitExceededError
 from core.exceptions import AgentNotInitializedError
 from core.identity import build_system_prompt
+from core.telemetry import (
+    AGENT_CHAT_DURATION,
+    AGENT_CHAT_TOTAL,
+    ERROR_TOTAL,
+    LLM_TOKENS_TOTAL,
+)
 from core.types import ChatContext, TokenUsage
 from memory.store import MemoryEntry, MemoryScope, MemoryStore
 from safety.permissions import ActionVerdict, SafetyMiddleware
@@ -767,17 +774,27 @@ class OpenInternAgent:
             raise AgentNotInitializedError(self.agent_id)
 
         context = context or {}
+        platform = context.get("platform", "web")
+        t_start = time.perf_counter()
 
         # Cost guard check
         try:
             self.cost_guard.check()
         except BudgetExceededError:
+            ERROR_TOTAL.labels(category="budget").inc()
+            AGENT_CHAT_TOTAL.labels(
+                agent_id=self.agent_id, platform=platform, status="budget_exceeded"
+            ).inc()
             return (
                 "I've reached my daily budget limit. Please try again tomorrow "
                 "or ask an admin to increase the budget.",
                 TokenUsage(input_tokens=0, output_tokens=0, total_tokens=0),
             )
         except RateLimitExceededError:
+            ERROR_TOTAL.labels(category="rate_limit").inc()
+            AGENT_CHAT_TOTAL.labels(
+                agent_id=self.agent_id, platform=platform, status="rate_limited"
+            ).inc()
             return (
                 "I'm receiving too many requests right now. Please try again in a few minutes.",
                 TokenUsage(input_tokens=0, output_tokens=0, total_tokens=0),
@@ -791,6 +808,9 @@ class OpenInternAgent:
             user_id=context.get("user_id", ""),
         )
         if verdict == ActionVerdict.DENY:
+            AGENT_CHAT_TOTAL.labels(
+                agent_id=self.agent_id, platform=platform, status="denied"
+            ).inc()
             return "I'm not allowed to respond in this context.", TokenUsage(
                 input_tokens=0, output_tokens=0, total_tokens=0
             )
@@ -806,14 +826,41 @@ class OpenInternAgent:
             await self._maybe_compact(invoke_config)
 
         # Native async invoke — no asyncio.to_thread
-        result = await self._graph.ainvoke(
-            {"messages": [{"role": "user", "content": enriched_message}]},
-            invoke_config,
-        )
+        try:
+            result = await self._graph.ainvoke(
+                {"messages": [{"role": "user", "content": enriched_message}]},
+                invoke_config,
+            )
+        except Exception:
+            ERROR_TOTAL.labels(category="llm").inc()
+            AGENT_CHAT_TOTAL.labels(agent_id=self.agent_id, platform=platform, status="error").inc()
+            raise
 
         response = self._extract_response(result)
         token_usage = self._extract_token_usage(result)
         self._store_conversation(message, response, context)
+
+        # Record metrics
+        duration = time.perf_counter() - t_start
+        AGENT_CHAT_TOTAL.labels(agent_id=self.agent_id, platform=platform, status="ok").inc()
+        AGENT_CHAT_DURATION.labels(agent_id=self.agent_id, platform=platform).observe(duration)
+        provider = self.config.llm.provider
+        LLM_TOKENS_TOTAL.labels(agent_id=self.agent_id, provider=provider, direction="input").inc(
+            token_usage.input_tokens
+        )
+        LLM_TOKENS_TOTAL.labels(agent_id=self.agent_id, provider=provider, direction="output").inc(
+            token_usage.output_tokens
+        )
+
+        logger.info(
+            "Agent chat completed",
+            extra={
+                "agent_id": self.agent_id,
+                "platform": platform,
+                "duration_ms": round(duration * 1000),
+                "tokens": token_usage.total_tokens,
+            },
+        )
 
         return response, token_usage
 
@@ -833,11 +880,17 @@ class OpenInternAgent:
             raise AgentNotInitializedError(self.agent_id)
 
         context = context or {}
+        platform = context.get("platform", "web")
+        t_start = time.perf_counter()
 
         # Cost guard check
         try:
             self.cost_guard.check()
         except BudgetExceededError:
+            ERROR_TOTAL.labels(category="budget").inc()
+            AGENT_CHAT_TOTAL.labels(
+                agent_id=self.agent_id, platform=platform, status="budget_exceeded"
+            ).inc()
             yield {
                 "type": "done",
                 "content": "I've reached my daily budget limit. Please try again tomorrow "
@@ -846,6 +899,10 @@ class OpenInternAgent:
             }
             return
         except RateLimitExceededError:
+            ERROR_TOTAL.labels(category="rate_limit").inc()
+            AGENT_CHAT_TOTAL.labels(
+                agent_id=self.agent_id, platform=platform, status="rate_limited"
+            ).inc()
             yield {
                 "type": "done",
                 "content": "I'm receiving too many requests right now. "
@@ -862,6 +919,9 @@ class OpenInternAgent:
             user_id=context.get("user_id", ""),
         )
         if verdict == ActionVerdict.DENY:
+            AGENT_CHAT_TOTAL.labels(
+                agent_id=self.agent_id, platform=platform, status="denied"
+            ).inc()
             yield {
                 "type": "done",
                 "content": "I'm not allowed to respond in this context.",
@@ -909,6 +969,7 @@ class OpenInternAgent:
                     yield {"type": "status", "tool": tool_name, "status": "done"}
 
         except Exception:
+            ERROR_TOTAL.labels(category="llm").inc()
             logger.warning("astream_events failed, falling back to non-streaming chat()")
             response, token_usage = await self.chat(message, context, thread_id)
             yield {"type": "done", "content": response, "token_usage": dict(token_usage)}
@@ -928,6 +989,28 @@ class OpenInternAgent:
             full_text = self._extract_response(result)
 
         self._store_conversation(message, full_text, context)
+
+        # Record metrics
+        duration = time.perf_counter() - t_start
+        AGENT_CHAT_TOTAL.labels(agent_id=self.agent_id, platform=platform, status="ok").inc()
+        AGENT_CHAT_DURATION.labels(agent_id=self.agent_id, platform=platform).observe(duration)
+        provider = self.config.llm.provider
+        LLM_TOKENS_TOTAL.labels(agent_id=self.agent_id, provider=provider, direction="input").inc(
+            token_usage.input_tokens
+        )
+        LLM_TOKENS_TOTAL.labels(agent_id=self.agent_id, provider=provider, direction="output").inc(
+            token_usage.output_tokens
+        )
+
+        logger.info(
+            "Agent chat_stream completed",
+            extra={
+                "agent_id": self.agent_id,
+                "platform": platform,
+                "duration_ms": round(duration * 1000),
+                "tokens": token_usage.total_tokens,
+            },
+        )
 
         yield {
             "type": "done",

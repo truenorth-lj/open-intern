@@ -18,6 +18,7 @@ from core.config import AppConfig, get_config
 from core.heartbeat import HeartbeatRunner
 from core.manager import AgentManager
 from core.scheduler import CronScheduler
+from core.telemetry import TelemetryMiddleware, configure_logging, metrics_response
 
 logger = logging.getLogger(__name__)
 
@@ -146,6 +147,9 @@ def create_app(config: AppConfig) -> FastAPI:
     app.state.default_agent = None
     app.state.config = config
 
+    # Telemetry middleware (correlation ID + request metrics)
+    app.add_middleware(TelemetryMiddleware)
+
     # CORS
     default_origins = ["http://localhost:3000", "https://open-intern.zeabur.app"]
     env_origins = os.environ.get("CORS_ORIGINS")
@@ -166,7 +170,12 @@ def create_app(config: AppConfig) -> FastAPI:
 
     @app.middleware("http")
     async def check_api_key(request: Request, call_next):
-        if not api_secret or request.url.path in ("/health", "/docs", "/openapi.json"):
+        if not api_secret or request.url.path in (
+            "/health",
+            "/metrics",
+            "/docs",
+            "/openapi.json",
+        ):
             return await call_next(request)
         if request.url.path.startswith("/webhook/"):
             return await call_next(request)
@@ -231,6 +240,11 @@ def create_app(config: AppConfig) -> FastAPI:
 
         asyncio.create_task(_safe_process())
         return {"ok": True}
+
+    # Metrics endpoint (Prometheus)
+    @app.get("/metrics")
+    async def metrics():
+        return metrics_response()
 
     # Health endpoint
     @app.get("/health")
@@ -371,12 +385,9 @@ async def run_agent(platform: str = "web") -> None:
 
     config = get_config()
 
-    # Setup logging
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
+    # Setup structured logging (JSON in production, human-readable if LOG_FORMAT=text)
+    json_logs = os.environ.get("LOG_FORMAT", "json").lower() != "text"
+    configure_logging(json_format=json_logs)
 
     logger.info(f"Starting open_intern (platform: {platform})")
 

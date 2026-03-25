@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from collections import OrderedDict
 from datetime import datetime, timezone
 from enum import Enum
@@ -25,6 +26,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import DeclarativeBase, Session
 
 from core.database import get_engine, get_session_factory
+from core.telemetry import ERROR_TOTAL, MEMORY_OP_DURATION
 
 logger = logging.getLogger(__name__)
 
@@ -280,30 +282,39 @@ class MemoryStore:
 
     def store(self, entry: MemoryEntry) -> None:
         """Store a memory entry using raw SQL to avoid psycopg3/LangGraph conflicts."""
-        with self.engine.connect() as conn:
-            conn.execute(
-                sqlalchemy.text(
-                    "INSERT INTO memories "
-                    "(id, agent_id, content, scope, scope_id, source, "
-                    "importance, created_at, metadata_json) "
-                    "VALUES (:id, :agent_id, :content, :scope, :scope_id, "
-                    ":source, :importance, :created_at, :metadata_json) "
-                    "ON CONFLICT (id) DO UPDATE SET "
-                    "content = :content, importance = :importance"
-                ),
-                {
-                    "id": entry.id,
-                    "agent_id": self.agent_id,
-                    "content": entry.content,
-                    "scope": entry.scope.value,
-                    "scope_id": entry.scope_id,
-                    "source": entry.source,
-                    "importance": entry.importance,
-                    "created_at": entry.created_at,
-                    "metadata_json": json.dumps(entry.metadata),
-                },
+        t_start = time.perf_counter()
+        try:
+            with self.engine.connect() as conn:
+                conn.execute(
+                    sqlalchemy.text(
+                        "INSERT INTO memories "
+                        "(id, agent_id, content, scope, scope_id, source, "
+                        "importance, created_at, metadata_json) "
+                        "VALUES (:id, :agent_id, :content, :scope, :scope_id, "
+                        ":source, :importance, :created_at, :metadata_json) "
+                        "ON CONFLICT (id) DO UPDATE SET "
+                        "content = :content, importance = :importance"
+                    ),
+                    {
+                        "id": entry.id,
+                        "agent_id": self.agent_id,
+                        "content": entry.content,
+                        "scope": entry.scope.value,
+                        "scope_id": entry.scope_id,
+                        "source": entry.source,
+                        "importance": entry.importance,
+                        "created_at": entry.created_at,
+                        "metadata_json": json.dumps(entry.metadata),
+                    },
+                )
+                conn.commit()
+        except Exception:
+            ERROR_TOTAL.labels(category="memory").inc()
+            raise
+        finally:
+            MEMORY_OP_DURATION.labels(agent_id=self.agent_id, operation="store").observe(
+                time.perf_counter() - t_start
             )
-            conn.commit()
 
     @staticmethod
     def _record_to_entry(record: MemoryRecord) -> MemoryEntry:
@@ -330,12 +341,21 @@ class MemoryStore:
 
         Falls back to keyword search if full-text/vector columns are not yet available.
         """
+        t_start = time.perf_counter()
         try:
-            return self._recall_hybrid(query, scope, scope_id, limit)
+            result = self._recall_hybrid(query, scope, scope_id, limit)
         except (sqlalchemy.exc.ProgrammingError, sqlalchemy.exc.OperationalError) as e:
             # Column/table missing (migration not run) or DB connection issue
             logger.debug(f"Hybrid search unavailable, falling back to keyword: {e}")
-            return self._recall_keyword(query, scope, scope_id, limit)
+            result = self._recall_keyword(query, scope, scope_id, limit)
+        except Exception:
+            ERROR_TOTAL.labels(category="memory").inc()
+            raise
+        finally:
+            MEMORY_OP_DURATION.labels(agent_id=self.agent_id, operation="recall").observe(
+                time.perf_counter() - t_start
+            )
+        return result
 
     def _recall_keyword(
         self,
