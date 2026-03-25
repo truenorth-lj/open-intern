@@ -1069,6 +1069,7 @@ async def get_thread_messages(thread_id: str, user: dict = Depends(get_current_u
     try:
         state = await agent._graph.aget_state(invoke_config)
     except Exception:
+        logger.warning("Failed to retrieve thread state for %s", thread_id, exc_info=True)
         return {"messages": []}
 
     if not state or not state.values:
