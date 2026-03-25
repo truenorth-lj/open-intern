@@ -17,6 +17,7 @@ export {
   getSkill,
   deleteMemory,
   getThreadTokenUsage,
+  getThreadMessages,
   getAgentTokenUsage,
   getTokenUsageSummary,
   getTokenUsageTimeseries,

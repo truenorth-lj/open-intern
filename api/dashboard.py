@@ -1053,6 +1053,55 @@ def get_thread(thread_id: str, user: dict = Depends(get_current_user)):
     }
 
 
+@router.get("/threads/{thread_id}/messages")
+async def get_thread_messages(thread_id: str, user: dict = Depends(get_current_user)):
+    """Retrieve conversation messages for a thread from the LangGraph checkpointer."""
+    meta = _check_thread_access(thread_id, user)
+    agent_id = meta.get("agent_id", "default")
+    try:
+        agent = _get_agent(agent_id)
+    except Exception:
+        raise HTTPException(status_code=503, detail="Agent not available")
+    if not agent.is_initialized or agent._graph is None:
+        raise HTTPException(status_code=503, detail="Agent not initialized")
+
+    invoke_config = {"configurable": {"thread_id": thread_id}}
+    try:
+        state = await agent._graph.aget_state(invoke_config)
+    except Exception:
+        return {"messages": []}
+
+    if not state or not state.values:
+        return {"messages": []}
+
+    raw_messages = state.values.get("messages", [])
+    messages = []
+    for msg in raw_messages:
+        role = getattr(msg, "type", "unknown")
+        content = getattr(msg, "content", "")
+        # Map LangGraph message types to frontend roles
+        if role == "human":
+            role = "user"
+        elif role in ("ai", "assistant"):
+            role = "assistant"
+        else:
+            continue  # skip system, tool messages
+        # Handle content that is a list of blocks (e.g. thinking + text)
+        if isinstance(content, list):
+            text_parts = []
+            for block in content:
+                if isinstance(block, dict) and block.get("type") == "text":
+                    text_parts.append(block.get("text", ""))
+                elif isinstance(block, str):
+                    text_parts.append(block)
+            content = "\n\n".join(text_parts)
+        # Skip empty or tool-call-only messages
+        if not content:
+            continue
+        messages.append({"role": role, "content": content})
+    return {"messages": messages}
+
+
 class ThreadTitleUpdate(BaseModel):
     title: str
 

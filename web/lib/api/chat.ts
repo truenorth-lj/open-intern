@@ -116,6 +116,14 @@ export async function deleteThread(threadId: string) {
   return res.json();
 }
 
+export async function getThreadMessages(
+  threadId: string,
+): Promise<{ messages: { role: "user" | "assistant"; content: string }[] }> {
+  const res = await apiFetch(`/threads/${threadId}/messages`);
+  if (!res.ok) throw new Error("Failed to fetch thread messages");
+  return res.json();
+}
+
 export async function getMemories(
   scope?: string,
   limit = 50,
