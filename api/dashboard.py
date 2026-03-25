@@ -82,6 +82,7 @@ class AgentCreate(BaseModel):
     ssh_port: int = Field(22, ge=1, le=65535)
     ssh_user: str = "user"
     ssh_key: str = ""
+    admin_notes: str = ""
 
 
 class AgentUpdate(BaseModel):
@@ -112,6 +113,7 @@ class AgentUpdate(BaseModel):
     ssh_port: int | None = None
     ssh_user: str | None = None
     ssh_key: str | None = None
+    admin_notes: str | None = None
     is_active: bool | None = None
 
 
