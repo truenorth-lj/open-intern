@@ -5,11 +5,29 @@ from __future__ import annotations
 from core.config import AppConfig
 
 
-def build_system_prompt(config: AppConfig) -> str:
+def build_system_prompt(
+    config: AppConfig,
+    active_platforms: list[str] | None = None,
+) -> str:
     """Build the full system prompt from identity config."""
     name = config.identity.name
     role = config.identity.role
     personality = config.identity.personality.strip()
+
+    platform_section = ""
+    if active_platforms:
+        platforms_str = ", ".join(active_platforms)
+        default = active_platforms[0]
+        platform_section = f"""
+
+## Connected Platforms
+
+You are connected to: {platforms_str}
+Your default platform: {default}
+
+You can send messages to any person or channel on these platforms using
+the send_message tool. Use list_contacts or search_contacts to find people.
+"""
 
     return f"""You are {name}, a {role}.
 
@@ -40,4 +58,4 @@ to contexts where it doesn't belong.
 - For write actions (posting messages, creating content), use good judgment.
 - For destructive or external actions (sending emails, deleting things), ask for approval first.
 - Always log what you do. Transparency builds trust.
-"""
+{platform_section}"""

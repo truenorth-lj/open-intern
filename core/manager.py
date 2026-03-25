@@ -127,6 +127,28 @@ class AgentManager:
 
             extra_tools = create_scheduler_tools(self._scheduler, rec.agent_id)
 
+        # Messaging tools (send_message, list_contacts, etc.)
+        from core.messaging import MessageRouter, create_messaging_tools
+
+        msg_router = MessageRouter(
+            agent_id=rec.agent_id,
+            database_url=agent_config.database_url,
+            default_platform=rec.platform_type,
+        )
+        extra_tools.extend(create_messaging_tools(msg_router, agent_config.database_url))
+
+        # Detect active platforms from configured tokens
+        active_platforms: list[str] = []
+        if rec.platform_type:
+            active_platforms.append(rec.platform_type)
+        for platform, token_col in [
+            ("lark", rec.lark_app_id_encrypted),
+            ("discord", rec.discord_token_encrypted),
+            ("telegram", rec.telegram_token_encrypted),
+        ]:
+            if token_col and platform not in active_platforms:
+                active_platforms.append(platform)
+
         return OpenInternAgent(
             agent_config,
             agent_id=rec.agent_id,
@@ -137,6 +159,7 @@ class AgentManager:
             ssh_port=rec.ssh_port,
             ssh_user=rec.ssh_user,
             ssh_key=decrypt(rec.ssh_key_encrypted),
+            active_platforms=active_platforms,
         )
 
     def _register_agent(self, agent: OpenInternAgent, rec: AgentRecord) -> None:

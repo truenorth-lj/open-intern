@@ -394,12 +394,14 @@ class OpenInternAgent:
         ssh_port: int = 22,
         ssh_user: str = "user",
         ssh_key: str = "",
+        active_platforms: list[str] | None = None,
     ):
         self.config = config
         self.agent_id = agent_id
         self.sandbox_mode = sandbox_mode  # "none" | "base" | "desktop" | "ssh"
         self.e2b_sandbox_id = e2b_sandbox_id
         self.extra_tools = extra_tools or []
+        self.active_platforms = active_platforms or []
         self.ssh_host = ssh_host
         self.ssh_port = ssh_port
         self.ssh_user = ssh_user
@@ -420,6 +422,7 @@ class OpenInternAgent:
         self._store = None
         self._store_ctx = None
         self._e2b_backend = None
+        self._database_url = config.database_url
 
     @property
     def is_initialized(self) -> bool:
@@ -486,7 +489,9 @@ class OpenInternAgent:
         self._llm = _create_llm(self.config)
         logger.info(f"LLM ready: {self.config.llm.provider}:{self.config.llm.model}")
 
-        self._base_system_prompt = build_system_prompt(self.config)
+        self._base_system_prompt = build_system_prompt(
+            self.config, active_platforms=self.active_platforms
+        )
         self._memory_tools = create_memory_tools(self.memory_store)
         self._shell_backend = self._create_shell_backend()
 

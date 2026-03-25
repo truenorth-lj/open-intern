@@ -215,6 +215,30 @@ class LarkBot(Integration):
         else:
             logger.debug(f"Message sent to {channel_id}")
 
+    async def send_to_user(self, user_id: str, content: str) -> None:
+        """Send a DM to a Lark user via their open_id."""
+        text_content = json.dumps({"text": content})
+        request = (
+            CreateMessageRequest.builder()
+            .receive_id_type("open_id")
+            .request_body(
+                CreateMessageRequestBody.builder()
+                .receive_id(user_id)
+                .msg_type("text")
+                .content(text_content)
+                .build()
+            )
+            .build()
+        )
+        response = await asyncio.wait_for(
+            asyncio.to_thread(self._api_client.im.v1.message.create, request),
+            timeout=30.0,
+        )
+        if not response.success():
+            logger.error(f"Failed to send Lark DM to {user_id}: {response.code} - {response.msg}")
+        else:
+            logger.debug(f"DM sent to user {user_id}")
+
     def _is_self(self, event: ChatEvent) -> bool:
         return event.user_id == self._bot_open_id
 

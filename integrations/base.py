@@ -69,14 +69,24 @@ class Integration(ABC):
     async def send_message(
         self, channel_id: str, content: str, thread_id: str | None = None
     ) -> None:
-        """Send a message to a channel."""
+        """Send a message to a channel or group."""
         ...
+
+    async def send_to_user(self, user_id: str, content: str) -> None:
+        """Send a direct message to a user. Default: delegates to send_message."""
+        await self.send_message(channel_id=user_id, content=content)
 
     async def handle_event(self, event: ChatEvent) -> str | None:
         """Handle an incoming chat event. Returns the agent's response."""
         # Skip messages from the bot itself
         if self._is_self(event):
             return None
+
+        # Auto-capture contact from event
+        try:
+            await self._capture_contact(event)
+        except Exception:
+            logger.debug("Failed to capture contact", exc_info=True)
 
         # Let the agent process it
         thread_id = event.thread_id or event.channel_id
@@ -107,6 +117,34 @@ class Integration(ABC):
             )
 
         return response
+
+    async def _capture_contact(self, event: ChatEvent) -> None:
+        """Auto-capture user (and optionally group) from a chat event."""
+        from core.messaging import upsert_contact
+
+        database_url = getattr(self.agent, "_database_url", "")
+        if not database_url:
+            return
+
+        # Capture the user
+        if event.user_id and event.user_name:
+            await upsert_contact(
+                database_url=database_url,
+                platform=event.platform,
+                platform_id=event.user_id,
+                contact_type="user",
+                display_name=event.user_name,
+            )
+
+        # Capture the group/channel (not for DMs)
+        if not event.is_dm and event.channel_id:
+            await upsert_contact(
+                database_url=database_url,
+                platform=event.platform,
+                platform_id=event.channel_id,
+                contact_type="group",
+                display_name=event.channel_id,
+            )
 
     @abstractmethod
     def _is_self(self, event: ChatEvent) -> bool:

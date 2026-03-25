@@ -235,6 +235,27 @@ class UserAgentAccess(Base):
     )
 
 
+class ContactRecord(Base):
+    """Contact directory — people and groups the agent can message."""
+
+    __tablename__ = "contacts"
+
+    id = Column(String, primary_key=True)
+    platform = Column(String, nullable=False)  # "lark" | "discord" | "telegram"
+    platform_id = Column(String, nullable=False)  # open_id, discord user id, tg chat_id
+    type = Column(String, nullable=False)  # "user" | "group"
+    display_name = Column(String, nullable=False)
+    metadata_json = Column(Text, nullable=False, default="{}")
+    source = Column(String, nullable=False, default="auto")  # "auto" | "manual"
+    created_at = Column(DateTime(timezone=True), nullable=False)
+    updated_at = Column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (
+        Index("ix_contacts_platform_id", "platform", "platform_id", unique=True),
+        Index("ix_contacts_display_name", "display_name"),
+    )
+
+
 class MemoryStore:
     """Persistent memory store with 3-layer isolation and per-agent scoping."""
 

@@ -101,5 +101,19 @@ class DiscordBot(Integration):
         for chunk in chunk_message(content, max_size=2000):
             await channel.send(chunk)
 
+    async def send_to_user(self, user_id: str, content: str) -> None:
+        """Send a DM to a Discord user."""
+        if not self._bot:
+            logger.error("Discord bot not started")
+            return
+
+        try:
+            user = await self._bot.fetch_user(int(user_id))
+            for chunk in chunk_message(content, max_size=2000):
+                await user.send(chunk)
+            logger.debug(f"DM sent to Discord user {user_id}")
+        except Exception:
+            logger.exception(f"Failed to send Discord DM to {user_id}")
+
     def _is_self(self, event: ChatEvent) -> bool:
         return event.user_id == self._bot_id
