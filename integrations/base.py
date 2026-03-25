@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import uuid
 from abc import ABC, abstractmethod
 from typing import Any
 
@@ -101,20 +102,22 @@ class Integration(ABC):
         except Exception as exc:
             logger.exception(f"Agent chat failed for event from {event.platform}")
             last_exc = exc
-            # Retry once without thread context — corrupted checkpointer state
+            # Retry with a fresh thread — corrupted checkpointer state
             # (e.g. orphaned tool calls, duplicate system messages) can cause
-            # persistent failures on a thread.  A stateless retry lets the user
-            # get an answer while we log the bad thread for investigation.
+            # persistent failures on a thread.  A fresh thread_id gives the
+            # user an answer while we log the bad thread for investigation.
             if thread_id:
+                fresh_thread = f"recovery-{uuid.uuid4()}"
                 logger.warning(
-                    "Retrying without thread (thread_id=%s may be corrupted)",
+                    "Retrying with fresh thread %s (thread_id=%s may be corrupted)",
+                    fresh_thread,
                     thread_id,
                 )
                 try:
                     response, _token_usage = await self.agent.chat(
                         event.content,
                         context=event.to_context(),
-                        thread_id=None,
+                        thread_id=fresh_thread,
                     )
                     last_exc = None  # retry succeeded
                 except Exception as retry_exc:
