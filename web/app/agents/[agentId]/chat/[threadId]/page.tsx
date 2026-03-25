@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { sendMessageStream, getThreadTokenUsage, listAgents, reloadAgent } from "@/lib/api";
+import { sendMessageStream, getThreadTokenUsage, getThreadMessages, listAgents, reloadAgent } from "@/lib/api";
 import { formatTokenCount } from "@/lib/utils";
 import type { ChatMessage } from "@/lib/types";
 
@@ -47,14 +47,32 @@ export default function AgentThreadPage({
   useEffect(() => {
     const key = `thread_${threadId}`;
     const stored = sessionStorage.getItem(key);
+    let restoredFromCache = false;
     if (stored) {
       try {
-        setMessages(JSON.parse(stored));
+        const parsed = JSON.parse(stored);
+        if (parsed.length > 0) {
+          setMessages(parsed);
+          restoredFromCache = true;
+        }
       } catch {
-        setMessages([]);
+        // fall through to API
       }
-    } else {
-      setMessages([]);
+    }
+    if (!restoredFromCache) {
+      // Fetch from backend API (LangGraph checkpointer)
+      getThreadMessages(threadId)
+        .then((data) => {
+          if (data.messages.length > 0) {
+            setMessages(data.messages);
+            sessionStorage.setItem(key, JSON.stringify(data.messages));
+          } else {
+            setMessages([]);
+          }
+        })
+        .catch(() => {
+          setMessages([]);
+        });
     }
     getThreadTokenUsage(threadId)
       .then(setTokenUsage)
