@@ -195,6 +195,13 @@ class Integration(ABC):
         ...
 
 
+def _hash_id(value: str) -> str:
+    """One-way hash to strip PII before sending to Sentry."""
+    import hashlib
+
+    return hashlib.sha256(value.encode()).hexdigest()[:12]
+
+
 def _sentry_capture(exc: Exception, event: ChatEvent) -> None:
     """Report an exception to Sentry with platform context (no-op if disabled)."""
     try:
@@ -210,11 +217,11 @@ def _sentry_capture(exc: Exception, event: ChatEvent) -> None:
             scope.set_context(
                 "chat_event",
                 {
-                    "channel_id": event.channel_id,
-                    "user_id": event.user_id,
+                    "channel_id": _hash_id(event.channel_id),
+                    "user_id": _hash_id(event.user_id),
                     "is_dm": event.is_dm,
                 },
             )
             sentry_sdk.capture_exception(exc)
     except Exception:
-        pass
+        logger.warning("Sentry capture failed", exc_info=True)
