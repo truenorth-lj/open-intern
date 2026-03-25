@@ -115,6 +115,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     # Setup platform bots (track failures for /health)
     app.state.failed_platforms: list[str] = []
+    app.state.bot_setup_errors: list[str] = []
     config: AppConfig | None = getattr(app.state, "config", None)
     if config and mgr:
         for plat in ("telegram", "discord", "lark"):
@@ -123,6 +124,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
             except Exception as e:
                 logger.warning(f"Failed to setup {plat} bots: {e}")
                 app.state.failed_platforms.append(plat)
+                app.state.bot_setup_errors.append(f"{plat}: {e}")
 
     yield
 
@@ -251,6 +253,9 @@ def create_app(config: AppConfig) -> FastAPI:
         }
         if failed:
             result["failed_platforms"] = failed
+        errors: list[str] = getattr(app.state, "bot_setup_errors", [])
+        if errors:
+            result["bot_setup_errors"] = errors
         return result
 
     return app
@@ -287,10 +292,16 @@ async def _setup_platform_bots(
             )
 
         tg_agents = manager.get_telegram_agents()
+        logger.info(f"Telegram agents found: {list(tg_agents.keys())}")
+        errors: list[str] = getattr(app.state, "bot_setup_errors", [])
+        if not tg_agents:
+            errors.append("telegram: no agents with telegram_token_encrypted found in DB")
         for agent_id, record in tg_agents.items():
             agent = manager.get(agent_id)
             if not agent:
-                logger.warning(f"Agent {agent_id} has Telegram token but is not initialized")
+                msg = f"telegram/{agent_id}: agent not initialized"
+                logger.warning(msg)
+                errors.append(msg)
                 continue
             try:
                 token = decrypt(record.telegram_token_encrypted)
@@ -299,8 +310,11 @@ async def _setup_platform_bots(
                 webhook_url = f"{webhook_base}/webhook/{agent_id}"
                 await bot.setup_webhook(webhook_url)
                 app.state.telegram_bots[agent_id] = bot
+                logger.info(f"Telegram bot registered: {agent_id} -> {webhook_url}")
             except Exception as e:
-                logger.error(f"Failed to setup Telegram bot for agent {agent_id}: {e}")
+                msg = f"telegram/{agent_id}: {type(e).__name__}: {e}"
+                logger.error(msg)
+                errors.append(msg)
 
     elif platform == "discord":
         import asyncio
