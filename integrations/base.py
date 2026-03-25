@@ -93,17 +93,43 @@ class Integration(ABC):
         if not thread_id:
             logger.warning(f"No thread_id or channel_id for event from {event.platform}")
 
+        last_exc: Exception | None = None
         try:
             response, _token_usage = await self.agent.chat(
                 event.content, context=event.to_context(), thread_id=thread_id
             )
         except Exception as exc:
             logger.exception(f"Agent chat failed for event from {event.platform}")
-            response = "Sorry, I encountered an error processing your message. Please try again."
-            if os.environ.get("DEBUG_BOT_ERRORS"):  # intentional: admin opt-in only
-                exc_name = type(exc).__name__
-                exc_msg = str(exc)[:200]
-                response += f"\n\n[debug: {exc_name}: {exc_msg}]"
+            last_exc = exc
+            # Retry once without thread context — corrupted checkpointer state
+            # (e.g. orphaned tool calls, duplicate system messages) can cause
+            # persistent failures on a thread.  A stateless retry lets the user
+            # get an answer while we log the bad thread for investigation.
+            if thread_id:
+                logger.warning(
+                    "Retrying without thread (thread_id=%s may be corrupted)",
+                    thread_id,
+                )
+                try:
+                    response, _token_usage = await self.agent.chat(
+                        event.content,
+                        context=event.to_context(),
+                        thread_id=None,
+                    )
+                    last_exc = None  # retry succeeded
+                except Exception as retry_exc:
+                    logger.exception("Stateless retry also failed")
+                    last_exc = retry_exc
+                    response = None
+
+            if not response:
+                response = (
+                    "Sorry, I encountered an error processing your message. Please try again."
+                )
+                if os.environ.get("DEBUG_BOT_ERRORS") and last_exc:
+                    exc_name = type(last_exc).__name__
+                    exc_msg = str(last_exc)[:200]
+                    response += f"\n\n[debug: {exc_name}: {exc_msg}]"
 
         # Send response back
         if response:
