@@ -357,6 +357,7 @@ class AgentManager:
                     "ssh_port": r.ssh_port,
                     "ssh_user": r.ssh_user,
                     "ssh_key": "***" if r.ssh_key_encrypted else "",
+                    "admin_notes": r.admin_notes,
                     "is_active": r.is_active,
                     "created_at": r.created_at.isoformat() if r.created_at else "",
                     "updated_at": r.updated_at.isoformat() if r.updated_at else "",
@@ -394,6 +395,7 @@ class AgentManager:
         ssh_port: int = 22,
         ssh_user: str = "user",
         ssh_key: str = "",
+        admin_notes: str = "",
     ) -> dict:
         """Create a new agent in DB and initialize it. Secrets are encrypted before storage."""
         if sandbox_mode not in ("none", "base", "desktop", "ssh"):
@@ -444,6 +446,7 @@ class AgentManager:
             ssh_port=ssh_port,
             ssh_user=ssh_user,
             ssh_key_encrypted=encrypt(ssh_key),
+            admin_notes=admin_notes,
             is_active=True,
             created_at=now,
             updated_at=now,
@@ -510,6 +513,7 @@ class AgentManager:
                 "ssh_host",
                 "ssh_port",
                 "ssh_user",
+                "admin_notes",
                 "is_active",
             }
             for key, value in kwargs.items():

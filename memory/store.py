@@ -113,6 +113,9 @@ class AgentRecord(Base):
     ssh_user = Column(String, nullable=False, default="user")
     ssh_key_encrypted = Column(Text, nullable=False, default="")
 
+    # Admin-only notes (never exposed to agent system prompt)
+    admin_notes = Column(Text, nullable=False, default="")
+
     is_active = Column(Boolean, nullable=False, default=True)
     created_at = Column(DateTime(timezone=True), nullable=False)
     updated_at = Column(DateTime(timezone=True), nullable=False)
