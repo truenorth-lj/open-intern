@@ -343,11 +343,10 @@ class MemoryStore:
         """
         t_start = time.perf_counter()
         try:
-            result = self._recall_hybrid(query, scope, scope_id, limit)
+            return self._recall_hybrid(query, scope, scope_id, limit)
         except (sqlalchemy.exc.ProgrammingError, sqlalchemy.exc.OperationalError) as e:
-            # Column/table missing (migration not run) or DB connection issue
             logger.debug(f"Hybrid search unavailable, falling back to keyword: {e}")
-            result = self._recall_keyword(query, scope, scope_id, limit)
+            return self._recall_keyword(query, scope, scope_id, limit)
         except Exception:
             ERROR_TOTAL.labels(category="memory").inc()
             raise
@@ -355,7 +354,6 @@ class MemoryStore:
             MEMORY_OP_DURATION.labels(agent_id=self.agent_id, operation="recall").observe(
                 time.perf_counter() - t_start
             )
-        return result
 
     def _recall_keyword(
         self,

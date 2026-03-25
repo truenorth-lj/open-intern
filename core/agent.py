@@ -840,17 +840,18 @@ class OpenInternAgent:
         token_usage = self._extract_token_usage(result)
         self._store_conversation(message, response, context)
 
-        # Record metrics
+        # Record metrics — wrapped so extraction failures don't lose the count
         duration = time.perf_counter() - t_start
         AGENT_CHAT_TOTAL.labels(agent_id=self.agent_id, platform=platform, status="ok").inc()
         AGENT_CHAT_DURATION.labels(agent_id=self.agent_id, platform=platform).observe(duration)
-        provider = self.config.llm.provider
-        LLM_TOKENS_TOTAL.labels(agent_id=self.agent_id, provider=provider, direction="input").inc(
-            token_usage.input_tokens
-        )
-        LLM_TOKENS_TOTAL.labels(agent_id=self.agent_id, provider=provider, direction="output").inc(
-            token_usage.output_tokens
-        )
+        if token_usage.total_tokens:
+            provider = self.config.llm.provider
+            LLM_TOKENS_TOTAL.labels(
+                agent_id=self.agent_id, provider=provider, direction="input"
+            ).inc(token_usage.input_tokens)
+            LLM_TOKENS_TOTAL.labels(
+                agent_id=self.agent_id, provider=provider, direction="output"
+            ).inc(token_usage.output_tokens)
 
         logger.info(
             "Agent chat completed",
@@ -990,17 +991,18 @@ class OpenInternAgent:
 
         self._store_conversation(message, full_text, context)
 
-        # Record metrics
+        # Record metrics — wrapped so extraction failures don't lose the count
         duration = time.perf_counter() - t_start
         AGENT_CHAT_TOTAL.labels(agent_id=self.agent_id, platform=platform, status="ok").inc()
         AGENT_CHAT_DURATION.labels(agent_id=self.agent_id, platform=platform).observe(duration)
-        provider = self.config.llm.provider
-        LLM_TOKENS_TOTAL.labels(agent_id=self.agent_id, provider=provider, direction="input").inc(
-            token_usage.input_tokens
-        )
-        LLM_TOKENS_TOTAL.labels(agent_id=self.agent_id, provider=provider, direction="output").inc(
-            token_usage.output_tokens
-        )
+        if token_usage.total_tokens:
+            provider = self.config.llm.provider
+            LLM_TOKENS_TOTAL.labels(
+                agent_id=self.agent_id, provider=provider, direction="input"
+            ).inc(token_usage.input_tokens)
+            LLM_TOKENS_TOTAL.labels(
+                agent_id=self.agent_id, provider=provider, direction="output"
+            ).inc(token_usage.output_tokens)
 
         logger.info(
             "Agent chat_stream completed",

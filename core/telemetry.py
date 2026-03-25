@@ -6,7 +6,6 @@ import contextvars
 import logging
 import time
 from collections.abc import Callable
-from contextlib import contextmanager
 from typing import Any
 from uuid import uuid4
 
@@ -160,26 +159,6 @@ except ImportError:
 
 
 # ---------------------------------------------------------------------------
-# Timer helper
-# ---------------------------------------------------------------------------
-
-
-@contextmanager
-def timer():
-    """Context manager that exposes elapsed seconds via .elapsed."""
-
-    class _Timer:
-        elapsed: float = 0.0
-
-    t = _Timer()
-    start = time.perf_counter()
-    try:
-        yield t
-    finally:
-        t.elapsed = time.perf_counter() - start
-
-
-# ---------------------------------------------------------------------------
 # FastAPI middleware — correlation ID + request metrics
 # ---------------------------------------------------------------------------
 
@@ -191,21 +170,21 @@ class TelemetryMiddleware(BaseHTTPMiddleware):
         cid = request.headers.get("X-Correlation-ID") or str(uuid4())
         token = set_correlation_id(cid)
 
+        status_code: int = 500
         start = time.perf_counter()
         try:
             response = await call_next(request)
+            status_code = response.status_code
         except Exception:
             ERROR_TOTAL.labels(category="http").inc()
             raise
         finally:
             duration = time.perf_counter() - start
-            # Normalise path to avoid high-cardinality (e.g. /webhook/{id})
             path = _normalise_path(request.url.path)
-            status = getattr(response, "status_code", 500) if "response" in dir() else 500
             HTTP_REQUEST_DURATION.labels(
                 method=request.method,
                 path_template=path,
-                status_code=str(status),
+                status_code=str(status_code),
             ).observe(duration)
 
             _correlation_id.reset(token)
