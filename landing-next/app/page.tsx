@@ -43,7 +43,8 @@ export default function Home() {
             <div className="feature"><h3>Multi-Agent Dashboard</h3><p>Manage all your AI agents from one unified interface. No more one-server-per-agent sprawl.</p></div>
             <div className="feature"><h3>Enterprise Safety</h3><p>Action classification, human approval workflows, and complete audit trails. Your policies, enforced.</p></div>
             <div className="feature"><h3>Elastic Scaling</h3><p>Scale to zero when idle, burst on demand. Sandboxed runtime means your data stays safe.</p></div>
-            <div className="feature"><h3>Open Source</h3><p>MIT licensed. Self-hosted on your infrastructure. Zero telemetry. Full control, no lock-in.</p></div>
+            <div className="feature"><h3>Error Tracking</h3><p>Opt-in Sentry integration for backend and dashboard. Know when things break before your users do.</p></div>
+            <div className="feature"><h3>Open Source</h3><p>MIT licensed. Self-hosted on your infrastructure. Opt-in telemetry only. Full control, no lock-in.</p></div>
           </div>
         </section>
       </div>
@@ -87,7 +88,7 @@ export default function Home() {
               <tr><td>Multi-Agent</td><td>Unified dashboard</td><td>One per instance</td><td>One per instance</td></tr>
               <tr><td>Scaling</td><td>Elastic, scale to zero</td><td>One server each</td><td>One server each</td></tr>
               <tr><td>Isolation</td><td>Sandboxed runtime</td><td>Runs on host</td><td>WASM sandbox</td></tr>
-              <tr><td>Telemetry</td><td>Zero</td><td>Opt-out</td><td>Zero</td></tr>
+              <tr><td>Telemetry</td><td>Opt-in (Sentry)</td><td>Opt-out</td><td>Zero</td></tr>
             </tbody>
           </table>
         </section>

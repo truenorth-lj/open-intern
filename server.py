@@ -389,6 +389,16 @@ async def run_agent(platform: str = "web") -> None:
     json_logs = os.environ.get("LOG_FORMAT", "json").lower() != "text"
     configure_logging(json_format=json_logs)
 
+    # Initialize Sentry (opt-in — no-op when SENTRY_DSN is empty)
+    from core.sentry import init_sentry
+
+    init_sentry(
+        dsn=config.sentry_dsn,
+        environment=config.sentry_environment,
+        traces_sample_rate=config.sentry_traces_sample_rate,
+        profiles_sample_rate=config.sentry_profiles_sample_rate,
+    )
+
     logger.info(f"Starting open_intern (platform: {platform})")
 
     # Create scheduler (lightweight — no jobs loaded yet)

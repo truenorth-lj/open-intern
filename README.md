@@ -19,7 +19,7 @@
   <img src="https://img.shields.io/badge/python-3.11+-blue?logo=python&logoColor=white" alt="Python 3.11+"/>
   <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License"/>
   <img src="https://img.shields.io/badge/self--hosted-100%25-blueviolet" alt="Self-Hosted"/>
-  <img src="https://img.shields.io/badge/telemetry-zero-critical" alt="Zero Telemetry"/>
+  <img src="https://img.shields.io/badge/telemetry-opt--in-blueviolet" alt="Opt-in Telemetry"/>
 </p>
 
 ---
@@ -124,7 +124,7 @@ Open Intern was designed from the ground up to solve these problems:
 <td align="center">One server per agent</td></tr>
 
 <tr><td><strong>Telemetry</strong></td>
-<td align="center">Zero</td>
+<td align="center">Opt-in (Sentry)</td>
 <td align="center">Opt-out</td>
 <td align="center">Zero</td></tr>
 
@@ -336,6 +336,7 @@ Open Intern shares IronClaw's commitment to security (zero telemetry, full audit
 | ✅ | **LLM Provider Abstraction** | Claude, GPT-4, MiniMax, Ollama — switch with one config change |
 | ✅ | **Safety Middleware** | Action classification, permission gating, JSONL audit logging |
 | ✅ | **Sandbox File Browser** | Browse, read, edit, and create files in the agent's E2B sandbox from the dashboard |
+| ✅ | **Sentry Error Tracking** | Opt-in error monitoring and performance tracing for backend and dashboard (set `SENTRY_DSN` to enable) |
 | ✅ | **CLI** | `open_intern init`, `start`, `status`, `logs`, `chat` |
 | ✅ | **Docker Compose** | One-command deploy with PostgreSQL + pgvector |
 | ⬜ | **Proactive Heartbeat** | Periodic scanning with proactivity budget, confidence threshold, and quiet hours |
@@ -405,7 +406,7 @@ open_intern/
 Open Intern is built for teams that handle sensitive data:
 
 - **Sandboxed execution** — agents run in isolated environments (E2B / Fly / Docker). They never touch your host filesystem or read credentials directly
-- **Zero telemetry** — no data ever leaves your infrastructure
+- **Opt-in telemetry** — error tracking via Sentry is available but disabled by default. No data leaves your infrastructure unless you explicitly set `SENTRY_DSN`
 - **Self-hosted only** — runs on your servers, your cloud, your rules
 - **Action-level permissions** — every capability is classified as auto-allow, require-approval, or deny
 - **Full audit trail** — every agent action logged with reasoning chain, context retrievals, and confidence score
@@ -426,6 +427,11 @@ Environment-level settings (API keys, database URL) use `.env`:
 DATABASE_URL=postgresql://user:pass@localhost:5556/open_intern
 ANTHROPIC_API_KEY=sk-ant-...
 OPENAI_API_KEY=sk-...
+
+# Sentry error tracking (optional — disabled by default)
+SENTRY_DSN=https://examplePublicKey@o0.ingest.sentry.io/0
+SENTRY_ENVIRONMENT=production
+SENTRY_TRACES_SAMPLE_RATE=0.1
 
 # See .env.example for all options
 ```

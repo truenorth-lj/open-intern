@@ -92,6 +92,12 @@ class AppConfig(BaseSettings):
     # Shared infra keys
     e2b_api_key: str = ""
 
+    # Sentry error tracking (opt-in — no data sent when DSN is empty)
+    sentry_dsn: str = ""
+    sentry_environment: str = "production"
+    sentry_traces_sample_rate: float = 0.1
+    sentry_profiles_sample_rate: float = 0.1
+
     # Cloudflare R2 backup (S3-compatible)
     r2_account_id: str = ""
     r2_access_key_id: str = ""
