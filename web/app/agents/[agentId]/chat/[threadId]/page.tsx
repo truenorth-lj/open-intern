@@ -45,36 +45,35 @@ export default function AgentThreadPage({
   }, [agentId]);
 
   useEffect(() => {
-    // First try sessionStorage for in-progress conversation data
     const key = `thread_${threadId}`;
     const stored = sessionStorage.getItem(key);
+    let restoredFromCache = false;
     if (stored) {
       try {
         const parsed = JSON.parse(stored);
         if (parsed.length > 0) {
           setMessages(parsed);
-          getThreadTokenUsage(threadId)
-            .then(setTokenUsage)
-            .catch(() => {});
-          return;
+          restoredFromCache = true;
         }
       } catch {
         // fall through to API
       }
     }
-    // Fetch from backend API (LangGraph checkpointer)
-    getThreadMessages(threadId)
-      .then((data) => {
-        if (data.messages.length > 0) {
-          setMessages(data.messages);
-          sessionStorage.setItem(key, JSON.stringify(data.messages));
-        } else {
+    if (!restoredFromCache) {
+      // Fetch from backend API (LangGraph checkpointer)
+      getThreadMessages(threadId)
+        .then((data) => {
+          if (data.messages.length > 0) {
+            setMessages(data.messages);
+            sessionStorage.setItem(key, JSON.stringify(data.messages));
+          } else {
+            setMessages([]);
+          }
+        })
+        .catch(() => {
           setMessages([]);
-        }
-      })
-      .catch(() => {
-        setMessages([]);
-      });
+        });
+    }
     getThreadTokenUsage(threadId)
       .then(setTokenUsage)
       .catch(() => {});
