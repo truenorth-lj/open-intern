@@ -424,7 +424,11 @@ class CronScheduler:
             ),
             "created_at": record.created_at.isoformat() if record.created_at else "",
             "updated_at": record.updated_at.isoformat() if record.updated_at else "",
-            "metadata": json.loads(record.metadata_json) if record.metadata_json else {},
+            "metadata": (
+                json.loads(record.metadata_json)
+                if record.metadata_json and record.metadata_json.strip()
+                else {}
+            ),
         }
 
 
