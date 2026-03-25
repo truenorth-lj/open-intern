@@ -143,7 +143,7 @@ class Integration(ABC):
                 platform=event.platform,
                 platform_id=event.channel_id,
                 contact_type="group",
-                display_name=event.channel_id,
+                display_name=f"#{event.channel_id}",
             )
 
     @abstractmethod

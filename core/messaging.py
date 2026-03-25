@@ -44,30 +44,19 @@ async def upsert_contact(
 
     def _do():
         with engine.connect() as conn:
-            # Try update first (name may have changed)
+            # Atomic upsert: insert or update display_name on conflict
             result = conn.execute(
-                sqlalchemy.text(
-                    "UPDATE contacts SET display_name = :name, "
-                    "updated_at = :now "
-                    "WHERE platform = :platform AND platform_id = :pid "
-                    "RETURNING id, display_name"
-                ),
-                {"name": display_name, "now": now, "platform": platform, "pid": platform_id},
-            )
-            row = result.fetchone()
-            if row:
-                conn.commit()
-                return {"id": row[0], "display_name": row[1], "updated": True}
-
-            # Insert new
-            conn.execute(
                 sqlalchemy.text(
                     "INSERT INTO contacts "
                     "(id, platform, platform_id, type, display_name, "
                     "metadata_json, source, created_at, updated_at) "
                     "VALUES (:id, :platform, :pid, :type, :name, "
                     ":meta, :source, :now, :now) "
-                    "ON CONFLICT (platform, platform_id) DO NOTHING"
+                    "ON CONFLICT (platform, platform_id) "
+                    "DO UPDATE SET display_name = EXCLUDED.display_name, "
+                    "updated_at = EXCLUDED.updated_at "
+                    "RETURNING id, display_name, "
+                    "(xmax::text::int > 0) AS was_updated"
                 ),
                 {
                     "id": contact_id,
@@ -80,8 +69,13 @@ async def upsert_contact(
                     "now": now,
                 },
             )
+            row = result.fetchone()
             conn.commit()
-            return {"id": contact_id, "display_name": display_name, "updated": False}
+            return {
+                "id": row[0],
+                "display_name": row[1],
+                "updated": bool(row[2]),
+            }
 
     return await asyncio.to_thread(_do)
 
