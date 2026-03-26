@@ -852,11 +852,20 @@ class OpenInternAgent:
                 logger.warning(
                     f"Thread {thread_id} has corrupted state, retrying with fresh thread"
                 )
-                fresh_config = {"configurable": {"thread_id": f"{thread_id}:reset:{id(object())}"}}
-                result = await self._graph.ainvoke(
-                    {"messages": [{"role": "user", "content": enriched_message}]},
-                    fresh_config,
-                )
+                import secrets
+
+                fresh_id = f"{thread_id}:reset:{secrets.token_hex(4)}"
+                try:
+                    result = await self._graph.ainvoke(
+                        {"messages": [{"role": "user", "content": enriched_message}]},
+                        {"configurable": {"thread_id": fresh_id}},
+                    )
+                except Exception:
+                    ERROR_TOTAL.labels(category="llm").inc()
+                    AGENT_CHAT_TOTAL.labels(
+                        agent_id=self.agent_id, platform=platform, status="error"
+                    ).inc()
+                    raise
             else:
                 ERROR_TOTAL.labels(category="llm").inc()
                 AGENT_CHAT_TOTAL.labels(
