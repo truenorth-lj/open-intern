@@ -79,6 +79,23 @@ class TestPauseAllSandboxes:
         mock_manager.pause_all_sandboxes()
         mock_manager._update_sandbox_id.assert_not_called()
 
+    def test_skips_ssh_backends_without_pause(self, mock_manager):
+        """SSH backends don't have pause/backup_to_r2 — they should be skipped."""
+        ssh_agent = MagicMock()
+        # SSHBackend has no `pause` attribute — use a simple object to simulate
+        ssh_backend = MagicMock(spec=["id", "connect", "execute"])  # no pause
+        ssh_agent._e2b_backend = ssh_backend
+
+        e2b_agent = _make_agent(has_e2b=True, sandbox_id="sbx-ok")
+        mock_manager._agents = {"ssh-agent": ssh_agent, "e2b-agent": e2b_agent}
+
+        mock_manager.pause_all_sandboxes()
+
+        # SSH backend should not have pause called on it
+        # E2B agent still paused normally
+        e2b_agent._e2b_backend.pause.assert_called_once()
+        mock_manager._update_sandbox_id.assert_called_once_with("e2b-agent", "sbx-ok")
+
     def test_pause_returns_none_skips_update(self, mock_manager):
         agent = _make_agent(has_e2b=True)
         agent._e2b_backend.pause.return_value = None
