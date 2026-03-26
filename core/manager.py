@@ -202,7 +202,10 @@ class AgentManager:
                 session.commit()
 
     def pause_all_sandboxes(self) -> None:
-        """Backup to R2 and pause all active E2B sandboxes."""
+        """Backup to R2 and pause all active E2B sandboxes.
+
+        SSH backends are skipped — they don't support pause/backup_to_r2.
+        """
         from core.r2_storage import R2Storage
 
         r2 = R2Storage(self.config)
@@ -211,9 +214,12 @@ class AgentManager:
             backend = agent._e2b_backend
             if backend is None:
                 continue
+            # SSH backends don't support pause or R2 backup — skip them
+            if not hasattr(backend, "pause"):
+                continue
             try:
                 # Backup to R2 before pausing (best-effort)
-                if r2.enabled:
+                if r2.enabled and hasattr(backend, "backup_to_r2"):
                     backend.backup_to_r2(r2)
 
                 sandbox_id = backend.pause()
