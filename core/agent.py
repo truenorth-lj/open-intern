@@ -846,10 +846,32 @@ class OpenInternAgent:
                 {"messages": [{"role": "user", "content": enriched_message}]},
                 invoke_config,
             )
-        except Exception:
-            ERROR_TOTAL.labels(category="llm").inc()
-            AGENT_CHAT_TOTAL.labels(agent_id=self.agent_id, platform=platform, status="error").inc()
-            raise
+        except Exception as exc:
+            # Corrupted thread state (e.g. orphaned tool_result) — retry with fresh thread
+            if "tool call result does not follow tool call" in str(exc) and thread_id:
+                logger.warning(
+                    f"Thread {thread_id} has corrupted state, retrying with fresh thread"
+                )
+                import secrets
+
+                fresh_id = f"{thread_id}:reset:{secrets.token_hex(4)}"
+                try:
+                    result = await self._graph.ainvoke(
+                        {"messages": [{"role": "user", "content": enriched_message}]},
+                        {"configurable": {"thread_id": fresh_id}},
+                    )
+                except Exception:
+                    ERROR_TOTAL.labels(category="llm").inc()
+                    AGENT_CHAT_TOTAL.labels(
+                        agent_id=self.agent_id, platform=platform, status="error"
+                    ).inc()
+                    raise
+            else:
+                ERROR_TOTAL.labels(category="llm").inc()
+                AGENT_CHAT_TOTAL.labels(
+                    agent_id=self.agent_id, platform=platform, status="error"
+                ).inc()
+                raise
 
         response = self._extract_response(result)
         token_usage = self._extract_token_usage(result)
@@ -859,14 +881,14 @@ class OpenInternAgent:
         duration = time.perf_counter() - t_start
         AGENT_CHAT_TOTAL.labels(agent_id=self.agent_id, platform=platform, status="ok").inc()
         AGENT_CHAT_DURATION.labels(agent_id=self.agent_id, platform=platform).observe(duration)
-        if token_usage.total_tokens:
+        if token_usage["total_tokens"]:
             provider = self.config.llm.provider
             LLM_TOKENS_TOTAL.labels(
                 agent_id=self.agent_id, provider=provider, direction="input"
-            ).inc(token_usage.input_tokens)
+            ).inc(token_usage["input_tokens"])
             LLM_TOKENS_TOTAL.labels(
                 agent_id=self.agent_id, provider=provider, direction="output"
-            ).inc(token_usage.output_tokens)
+            ).inc(token_usage["output_tokens"])
 
         logger.info(
             "Agent chat completed",
@@ -874,7 +896,7 @@ class OpenInternAgent:
                 "agent_id": self.agent_id,
                 "platform": platform,
                 "duration_ms": round(duration * 1000),
-                "tokens": token_usage.total_tokens,
+                "tokens": token_usage["total_tokens"],
             },
         )
 
@@ -1010,14 +1032,14 @@ class OpenInternAgent:
         duration = time.perf_counter() - t_start
         AGENT_CHAT_TOTAL.labels(agent_id=self.agent_id, platform=platform, status="ok").inc()
         AGENT_CHAT_DURATION.labels(agent_id=self.agent_id, platform=platform).observe(duration)
-        if token_usage.total_tokens:
+        if token_usage["total_tokens"]:
             provider = self.config.llm.provider
             LLM_TOKENS_TOTAL.labels(
                 agent_id=self.agent_id, provider=provider, direction="input"
-            ).inc(token_usage.input_tokens)
+            ).inc(token_usage["input_tokens"])
             LLM_TOKENS_TOTAL.labels(
                 agent_id=self.agent_id, provider=provider, direction="output"
-            ).inc(token_usage.output_tokens)
+            ).inc(token_usage["output_tokens"])
 
         logger.info(
             "Agent chat_stream completed",
@@ -1025,7 +1047,7 @@ class OpenInternAgent:
                 "agent_id": self.agent_id,
                 "platform": platform,
                 "duration_ms": round(duration * 1000),
-                "tokens": token_usage.total_tokens,
+                "tokens": token_usage["total_tokens"],
             },
         )
 
