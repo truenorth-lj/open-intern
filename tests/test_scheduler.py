@@ -219,6 +219,44 @@ class TestCronSchedulerExecuteJob:
         assert call_args[0][0] == "Do something"
         scheduler._update_job_status.assert_called_once_with("job-1", "success")
 
+    async def test_execute_retries_init_when_not_initialized(self, scheduler):
+        """Agent that failed async init gets re-initialized before chat."""
+        agent = AsyncMock()
+        agent.is_initialized = False
+        empty_usage = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
+        agent.chat.return_value = ("Done!", empty_usage)
+
+        # After initialize_async, mark as initialized
+        async def _fix_init():
+            agent.is_initialized = True
+
+        agent.initialize_async.side_effect = _fix_init
+
+        manager = MagicMock()
+        manager.get.return_value = agent
+        scheduler._agent_manager = manager
+
+        session = scheduler._mock_session
+        record = MagicMock(spec=ScheduledJobRecord)
+        record.id = "job-1"
+        record.agent_id = "agent-1"
+        record.prompt = "Do something"
+        record.channel_id = ""
+        record.name = "Test"
+        record.enabled = True
+        record.isolated = False
+        record.delivery_platform = ""
+        record.delivery_chat_id = ""
+        session.query.return_value.filter_by.return_value.first.return_value = record
+
+        scheduler._update_job_status = MagicMock()
+
+        await scheduler._execute_job("job-1")
+
+        agent.initialize_async.assert_called_once()
+        agent.chat.assert_called_once()
+        scheduler._update_job_status.assert_called_once_with("job-1", "success")
+
     async def test_execute_handles_missing_agent(self, scheduler):
         manager = MagicMock()
         manager.get.return_value = None

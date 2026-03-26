@@ -102,6 +102,18 @@ class CronScheduler:
             if not agent:
                 raise RuntimeError(f"Agent '{agent_id}' not available")
 
+            # Attempt async init if agent graph was never compiled (e.g. prior init failure)
+            if not agent.is_initialized:
+                logger.warning(
+                    f"Agent '{agent_id}' not initialized, attempting re-initialization..."
+                )
+                await agent.initialize_async()
+                if not agent.is_initialized:
+                    raise RuntimeError(
+                        f"Agent '{agent_id}' re-initialization failed, graph still not compiled"
+                    )
+                logger.info(f"Agent '{agent_id}' re-initialized successfully")
+
             context: dict[str, Any] = {
                 "platform": delivery_platform or "scheduler",
                 "channel_id": channel_id or delivery_chat_id or "scheduled-task",
