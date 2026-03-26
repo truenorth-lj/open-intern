@@ -148,20 +148,23 @@ def create_memory_tools(memory_store: MemoryStore) -> list:
 # ---------------------------------------------------------------------------
 
 
-def create_filesystem_tools(backend_getter) -> list:
+def create_filesystem_tools(backend_getter, working_dir: str = "/home/user") -> list:
     """Create async filesystem tools that route to the sandbox backend.
 
     Args:
         backend_getter: callable that returns the backend instance.
+        working_dir: Default working directory for ls/glob/grep.
     """
+    _wd = working_dir
 
     @tool
-    async def ls(path: str = "/home/user") -> str:
+    async def ls(path: str = "") -> str:
         """List directory contents.
 
         Args:
-            path: Directory path to list. Defaults to /home/user.
+            path: Directory path to list. Defaults to the agent workspace.
         """
+        path = path or _wd
         backend = backend_getter()
         entries = await backend.als_info(path)
         if not entries:
@@ -221,13 +224,14 @@ def create_filesystem_tools(backend_getter) -> list:
         return f"Edited {file_path} ({result.occurrences} replacement(s))"
 
     @tool
-    async def glob(pattern: str, path: str = "/home/user") -> str:
+    async def glob(pattern: str, path: str = "") -> str:
         """Find files matching a glob pattern.
 
         Args:
             pattern: Glob pattern (e.g., "*.py", "**/*.md").
-            path: Root directory to search from. Default /home/user.
+            path: Root directory to search from. Defaults to the agent workspace.
         """
+        path = path or _wd
         backend = backend_getter()
         entries = await backend.aglob_info(pattern, path)
         if not entries:
@@ -235,14 +239,15 @@ def create_filesystem_tools(backend_getter) -> list:
         return "\n".join(e.path for e in entries)
 
     @tool
-    async def grep(pattern: str, path: str = "/home/user", file_glob: str = "") -> str:
+    async def grep(pattern: str, path: str = "", file_glob: str = "") -> str:
         """Search for a text pattern in files.
 
         Args:
             pattern: Text pattern to search for.
-            path: Directory to search in. Default /home/user.
+            path: Directory to search in. Defaults to the agent workspace.
             file_glob: Optional glob to filter files (e.g., "*.py").
         """
+        path = path or _wd
         backend = backend_getter()
         result = await backend.agrep_raw(pattern, path, file_glob or None)
         if isinstance(result, str):
@@ -467,9 +472,18 @@ class OpenInternAgent:
         all_tools: list[Any] = list(self._memory_tools) + list(self.extra_tools)
         if self._e2b_backend is not None:
             backend = self._shell_backend
-            fs_tools = create_filesystem_tools(lambda: backend)
+            working_dir = self._sandbox_working_dir()
+            fs_tools = create_filesystem_tools(lambda: backend, working_dir=working_dir)
             all_tools.extend(fs_tools)
         return all_tools, system_prompt
+
+    def _sandbox_working_dir(self) -> str:
+        """Return the default working directory for sandbox file tools."""
+        if self.sandbox_mode == "ssh":
+            home = f"/home/{self.ssh_user}" if self.ssh_user != "root" else "/root"
+            return f"{home}/agent-workspace"
+        # E2B (base / desktop) uses /home/user
+        return "/home/user/agent-workspace"
 
     def _compile_graph(self, tools: list[Any], system_prompt: str) -> None:
         """Build and compile the LangGraph StateGraph."""
@@ -704,14 +718,16 @@ class OpenInternAgent:
                 if not file_path.is_file() or file_path.stat().st_size > self._MAX_SKILL_FILE_SIZE:
                     continue
                 relative = file_path.relative_to(skills_dir)
-                sandbox_path = f"/home/user/skills/{relative.as_posix()}"
+                skills_root = f"{self._sandbox_working_dir()}/skills"
+                sandbox_path = f"{skills_root}/{relative.as_posix()}"
                 content = file_path.read_bytes()
                 files_to_upload.append((sandbox_path, content))
 
         if files_to_upload:
-            self._e2b_backend.execute("mkdir -p /home/user/skills")
+            skills_root = f"{self._sandbox_working_dir()}/skills"
+            self._e2b_backend.execute(f"mkdir -p {skills_root}")
             self._e2b_backend.upload_files(files_to_upload)
-            logger.info(f"Seeded {len(files_to_upload)} skill file(s) into E2B sandbox")
+            logger.info(f"Seeded {len(files_to_upload)} skill file(s) into sandbox")
 
     def _backup_sandbox_to_r2(self) -> None:
         """Backup sandbox files to R2 (called before idle pause)."""
