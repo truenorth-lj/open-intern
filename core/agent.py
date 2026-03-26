@@ -710,6 +710,7 @@ class OpenInternAgent:
             logger.warning(f"Skills directory not found: {skills_dir}")
             return
 
+        skills_root = f"{self._sandbox_working_dir()}/skills"
         files_to_upload: list[tuple[str, bytes]] = []
         for skill_dir in sorted(skills_dir.iterdir()):
             if not skill_dir.is_dir() or skill_dir.name.startswith((".", "_")):
@@ -718,13 +719,11 @@ class OpenInternAgent:
                 if not file_path.is_file() or file_path.stat().st_size > self._MAX_SKILL_FILE_SIZE:
                     continue
                 relative = file_path.relative_to(skills_dir)
-                skills_root = f"{self._sandbox_working_dir()}/skills"
                 sandbox_path = f"{skills_root}/{relative.as_posix()}"
                 content = file_path.read_bytes()
                 files_to_upload.append((sandbox_path, content))
 
         if files_to_upload:
-            skills_root = f"{self._sandbox_working_dir()}/skills"
             self._e2b_backend.execute(f"mkdir -p {skills_root}")
             self._e2b_backend.upload_files(files_to_upload)
             logger.info(f"Seeded {len(files_to_upload)} skill file(s) into sandbox")
