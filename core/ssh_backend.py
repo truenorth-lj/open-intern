@@ -60,12 +60,11 @@ class SSHBackend(SandboxBackendProtocol):
     def id(self) -> str:
         return f"ssh-{self._conn_info.host}-{self._agent_id}"
 
-    def connect(self) -> None:
-        """Establish SSH connection."""
-        import paramiko
+    def connect(self, *, _max_retries: int = 3) -> None:
+        """Establish SSH connection with retry and exponential backoff."""
+        import time
 
-        client = paramiko.SSHClient()
-        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        import paramiko
 
         kwargs: dict = {
             "hostname": self._conn_info.host,
@@ -92,13 +91,30 @@ class SSHBackend(SandboxBackendProtocol):
             kwargs["password"] = self._conn_info.password
         # else: rely on ssh-agent or default keys
 
-        client.connect(**kwargs)
-        self._client = client
-        self._sftp = client.open_sftp()
-        logger.info(
-            f"SSH connected to {self._conn_info.host}:{self._conn_info.port} "
-            f"as {self._conn_info.username} for agent {self._agent_id}"
-        )
+        last_exc: Exception | None = None
+        for attempt in range(1, _max_retries + 1):
+            try:
+                client = paramiko.SSHClient()
+                client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+                client.connect(**kwargs)
+                self._client = client
+                self._sftp = client.open_sftp()
+                logger.info(
+                    f"SSH connected to {self._conn_info.host}:{self._conn_info.port} "
+                    f"as {self._conn_info.username} for agent {self._agent_id}"
+                )
+                return
+            except (OSError, paramiko.SSHException) as exc:
+                last_exc = exc
+                if attempt < _max_retries:
+                    delay = 2 ** (attempt - 1)  # 1s, 2s
+                    logger.warning(
+                        f"SSH connect attempt {attempt}/{_max_retries} failed for "
+                        f"{self._conn_info.host}: {exc}. Retrying in {delay}s..."
+                    )
+                    time.sleep(delay)
+
+        raise last_exc  # type: ignore[misc]
 
     def _ensure_connected(self):
         """Ensure SSH connection is alive, reconnect if needed."""
