@@ -102,7 +102,7 @@ class CronScheduler:
             if not agent:
                 raise RuntimeError(f"Agent '{agent_id}' not available")
 
-            # Retry async init if agent graph was never compiled (e.g. prior init failure)
+            # Attempt async init if agent graph was never compiled (e.g. prior init failure)
             if not agent.is_initialized:
                 logger.warning(
                     f"Agent '{agent_id}' not initialized, attempting re-initialization..."
