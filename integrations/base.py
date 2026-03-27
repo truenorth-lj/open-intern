@@ -78,6 +78,15 @@ class Integration(ABC):
         """Send a direct message to a user. Default: delegates to send_message."""
         await self.send_message(channel_id=user_id, content=content)
 
+    async def send_typing_indicator(self, event: ChatEvent) -> str | None:
+        """Send a typing/thinking indicator. Returns a message_id that can be
+        updated later via :meth:`update_message`, or *None* if not supported."""
+        return None
+
+    async def update_message(self, message_id: str, content: str) -> bool:
+        """Update an existing message in-place. Returns True on success."""
+        return False
+
     async def handle_event(self, event: ChatEvent) -> str | None:
         """Handle an incoming chat event. Returns the agent's response."""
         # Skip messages from the bot itself
@@ -93,6 +102,13 @@ class Integration(ABC):
             await self._capture_contact(event)
         except Exception:
             logger.debug("Failed to capture contact", exc_info=True)
+
+        # Send typing indicator (platform-specific; no-op by default)
+        typing_msg_id: str | None = None
+        try:
+            typing_msg_id = await self.send_typing_indicator(event)
+        except Exception:
+            logger.debug("Typing indicator failed", exc_info=True)
 
         # Let the agent process it
         thread_id = event.thread_id or event.channel_id
@@ -150,14 +166,27 @@ class Integration(ABC):
 
         # Send response back
         if response:
-            # For DMs, thread_id is the chat_id (for LangGraph context), not
-            # a message_id — don't pass it to the reply API.
-            reply_thread_id = None if event.is_dm else event.thread_id
-            await self.send_message(
-                event.channel_id,
-                response,
-                thread_id=reply_thread_id,
-            )
+            # If we sent a typing indicator, update it in-place
+            if typing_msg_id:
+                updated = await self.update_message(typing_msg_id, response)
+                if not updated:
+                    # Fallback: send as new message if update failed
+                    logger.debug("Failed to update typing message, sending new message")
+                    reply_thread_id = None if event.is_dm else event.thread_id
+                    await self.send_message(
+                        event.channel_id,
+                        response,
+                        thread_id=reply_thread_id,
+                    )
+            else:
+                # For DMs, thread_id is the chat_id (for LangGraph context), not
+                # a message_id — don't pass it to the reply API.
+                reply_thread_id = None if event.is_dm else event.thread_id
+                await self.send_message(
+                    event.channel_id,
+                    response,
+                    thread_id=reply_thread_id,
+                )
 
         return response
 

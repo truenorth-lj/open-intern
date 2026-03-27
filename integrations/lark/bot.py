@@ -14,6 +14,8 @@ from lark_oapi.api.im.v1 import (
     CreateMessageRequest,
     CreateMessageRequestBody,
     P2ImMessageReceiveV1,
+    PatchMessageRequest,
+    PatchMessageRequestBody,
     ReplyMessageRequest,
     ReplyMessageRequestBody,
 )
@@ -242,6 +244,51 @@ class LarkBot(Integration):
             logger.error(f"Failed to send Lark DM to {user_id}: {response.code} - {response.msg}")
         else:
             logger.debug(f"DM sent to user {user_id}")
+
+    async def send_typing_indicator(self, event: ChatEvent) -> str | None:
+        """Send a 'Thinking...' message and return its message_id for later update."""
+        text_content = json.dumps({"text": "Thinking..."})
+        request = (
+            CreateMessageRequest.builder()
+            .receive_id_type("chat_id")
+            .request_body(
+                CreateMessageRequestBody.builder()
+                .receive_id(event.channel_id)
+                .msg_type("text")
+                .content(text_content)
+                .build()
+            )
+            .build()
+        )
+        response = await asyncio.wait_for(
+            asyncio.to_thread(self._api_client.im.v1.message.create, request),
+            timeout=10.0,
+        )
+        if response.success() and response.data:
+            msg_id = response.data.message_id
+            logger.debug(f"Typing indicator sent: {msg_id}")
+            return msg_id
+        logger.debug(f"Failed to send typing indicator: {response.code} - {response.msg}")
+        return None
+
+    async def update_message(self, message_id: str, content: str) -> bool:
+        """Update an existing Lark message in-place via PatchMessage API."""
+        text_content = json.dumps({"text": content})
+        request = (
+            PatchMessageRequest.builder()
+            .message_id(message_id)
+            .request_body(PatchMessageRequestBody.builder().content(text_content).build())
+            .build()
+        )
+        response = await asyncio.wait_for(
+            asyncio.to_thread(self._api_client.im.v1.message.patch, request),
+            timeout=30.0,
+        )
+        if response.success():
+            logger.debug(f"Message {message_id} updated")
+            return True
+        logger.error(f"Failed to update message {message_id}: {response.code} - {response.msg}")
+        return False
 
     def _is_self(self, event: ChatEvent) -> bool:
         return event.user_id == self._bot_open_id
