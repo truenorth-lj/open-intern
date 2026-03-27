@@ -832,9 +832,9 @@ class OpenInternAgent:
 
         enriched_message = self._enrich_message(message, context)
 
-        invoke_config = {}
+        invoke_config: dict = {"recursion_limit": 100}
         if thread_id:
-            invoke_config = {"configurable": {"thread_id": thread_id}}
+            invoke_config["configurable"] = {"thread_id": thread_id}
 
         # Context compaction
         if thread_id:
@@ -969,9 +969,9 @@ class OpenInternAgent:
 
         enriched_message = self._enrich_message(message, context)
 
-        invoke_config = {}
+        invoke_config: dict = {"recursion_limit": 100}
         if thread_id:
-            invoke_config = {"configurable": {"thread_id": thread_id}}
+            invoke_config["configurable"] = {"thread_id": thread_id}
 
         if thread_id:
             await self._maybe_compact(invoke_config)
