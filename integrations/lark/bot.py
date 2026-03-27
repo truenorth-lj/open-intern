@@ -184,7 +184,11 @@ class LarkBot(Integration):
                 ReplyMessageRequest.builder()
                 .message_id(thread_id)
                 .request_body(
-                    ReplyMessageRequestBody.builder().msg_type("text").content(text_content).build()
+                    ReplyMessageRequestBody.builder()
+                    .msg_type("text")
+                    .content(text_content)
+                    .reply_in_thread(True)
+                    .build()
                 )
                 .build()
             )
