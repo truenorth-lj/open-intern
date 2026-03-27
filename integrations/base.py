@@ -79,8 +79,11 @@ class Integration(ABC):
         await self.send_message(channel_id=user_id, content=content)
 
     async def send_typing_indicator(self, event: ChatEvent) -> str | None:
-        """Send a typing/thinking indicator. Returns a message_id that can be
-        updated later via :meth:`update_message`, or *None* if not supported."""
+        """Send a typing/thinking indicator.
+
+        Returns a message_id that can be updated later via
+        :meth:`update_message`, or *None* if not supported.
+        """
         return None
 
     async def update_message(self, message_id: str, content: str) -> bool:
