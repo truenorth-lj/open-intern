@@ -129,9 +129,12 @@ class CronScheduler:
                 await self._deliver_response(
                     delivery_platform, delivery_chat_id, agent_id, response
                 )
-                # Write the delivered message into the delivery chat's thread so
-                # the agent has context when the user replies in that conversation.
-                await self._sync_to_delivery_thread(agent, delivery_chat_id, response)
+                # NOTE: We intentionally do NOT sync cron responses into the
+                # delivery chat's LangGraph thread.  Doing so floods the DM
+                # thread with AIMessages (one per cron run), causing thread
+                # bloat, broken compaction, and eventual context loss.
+                # The cron job already runs on its own thread; the delivered
+                # message is visible to the user in the chat UI.
 
             # Update last run status
             self._update_job_status(job_id, "success")
@@ -159,27 +162,6 @@ class CronScheduler:
             logger.info(f"Delivered to {platform}:{chat_id}")
         except Exception as e:
             logger.error(f"Failed to deliver to {platform}:{chat_id}: {e}")
-
-    @staticmethod
-    async def _sync_to_delivery_thread(agent: Any, chat_id: str, response: str) -> None:
-        """Write the cron response into the delivery chat's LangGraph thread.
-
-        This ensures that when a user replies in the same chat, the agent can
-        see its own prior scheduled messages in the conversation history.
-        """
-        from langchain_core.messages import AIMessage
-
-        try:
-            config = {"configurable": {"thread_id": chat_id}}
-            await agent._graph.aupdate_state(
-                config,
-                {"messages": [AIMessage(content=response)]},
-                as_node="agent",
-            )
-            logger.info(f"Synced cron response to delivery thread {chat_id}")
-        except Exception as e:
-            # Non-fatal: delivery already succeeded, this is best-effort context sync
-            logger.warning(f"Failed to sync cron response to thread {chat_id}: {e}")
 
     def _update_job_status(self, job_id: str, status: str, error: str | None = None) -> None:
         """Update job's last_run_at, last_run_status, and next_run_at."""

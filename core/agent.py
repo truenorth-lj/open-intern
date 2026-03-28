@@ -359,8 +359,9 @@ def _build_graph(
         messages = list(state["messages"])
 
         # Ensure exactly one system prompt as the first message.
-        # Strip all existing SystemMessages (compaction or prior runs may
-        # leave multiple scattered through the history) then prepend fresh.
+        # Strip SystemMessages (prior runs may leave duplicates) but keep
+        # compaction summaries — they use HumanMessage with a marker prefix,
+        # so they survive this filter naturally.
         messages = [m for m in messages if not isinstance(m, SystemMessage)]
         messages = [SystemMessage(content=system_prompt)] + messages
 
@@ -1088,12 +1089,12 @@ class OpenInternAgent:
             if not needs_compaction({"messages": messages}):
                 return
 
+            thread_id = invoke_config["configurable"]["thread_id"]
             logger.info(
-                f"Compacting conversation ({len(messages)} messages) "
-                f"for thread {invoke_config['configurable']['thread_id']}"
+                f"Compacting conversation ({len(messages)} messages) for thread {thread_id}"
             )
 
-            new_messages, summary = await compact_context(self._llm, messages)
+            removals, new_messages, summary = await compact_context(self._llm, messages)
 
             if summary:
                 self.memory_store.store(
@@ -1105,12 +1106,25 @@ class OpenInternAgent:
                     )
                 )
 
-            # Native async state update
-            await self._graph.aupdate_state(
-                invoke_config,
-                {"messages": new_messages},
+            # Step 1: Remove old messages using RemoveMessage
+            if removals:
+                await self._graph.aupdate_state(
+                    invoke_config,
+                    {"messages": removals},
+                )
+
+            # Step 2: Add the summary message
+            if new_messages:
+                await self._graph.aupdate_state(
+                    invoke_config,
+                    {"messages": new_messages},
+                )
+
+            remaining = len(messages) - len(removals) + len(new_messages)
+            logger.info(
+                f"Compaction complete: {len(messages)} -> ~{remaining} messages "
+                f"(removed {len(removals)}, added {len(new_messages)})"
             )
-            logger.info(f"Compaction complete: {len(messages)} -> {len(new_messages)} messages")
 
         except Exception as e:
             self._compaction_failures = getattr(self, "_compaction_failures", 0) + 1

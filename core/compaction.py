@@ -12,11 +12,23 @@ DEFAULT_MAX_MESSAGES = 40
 # Keep the most recent N messages intact (don't summarize them)
 DEFAULT_KEEP_RECENT = 10
 
+# Marker prefix used to identify compaction summary messages.
+# Stored as HumanMessage (not SystemMessage) so agent_node doesn't strip it.
+SUMMARY_MARKER = "[CONTEXT SUMMARY]"
+
 
 def count_messages(result: dict[str, Any]) -> int:
     """Count the number of messages in an agent result/state."""
     messages = result.get("messages", [])
     return len(messages)
+
+
+def is_summary_message(msg: Any) -> bool:
+    """Check if a message is a compaction summary."""
+    content = getattr(msg, "content", "")
+    if isinstance(content, str):
+        return content.startswith(SUMMARY_MARKER)
+    return False
 
 
 def needs_compaction(
@@ -31,7 +43,7 @@ async def compact_context(
     llm: Any,
     messages: list,
     keep_recent: int = DEFAULT_KEEP_RECENT,
-) -> tuple[list, str]:
+) -> tuple[list, list, str]:
     """Compact conversation history by summarizing older messages.
 
     Args:
@@ -40,36 +52,39 @@ async def compact_context(
         keep_recent: Number of recent messages to keep intact.
 
     Returns:
-        Tuple of (new_messages, summary_text).
-        new_messages starts with a system summary message followed by keep_recent messages.
+        Tuple of (removal_messages, new_messages, summary_text).
+        removal_messages: RemoveMessage instances for old messages to delete.
+        new_messages: [summary_msg] to add after removal.
     """
+    from langchain_core.messages import HumanMessage, RemoveMessage
+
     if len(messages) <= keep_recent:
-        return messages, ""
+        return [], [], ""
 
     # Split into old messages (to summarize) and recent messages (to keep)
     old_messages = messages[:-keep_recent]
     recent_messages = messages[-keep_recent:]
 
-    # Native async summarization — no thread pool
-    summary_text = await _summarize_messages_async(llm, old_messages)
+    # Filter out any previous summary messages from old_messages before summarizing
+    non_summary_old = [m for m in old_messages if not is_summary_message(m)]
 
-    # Create a synthetic system message with the summary
-    from langchain_core.messages import SystemMessage
+    # Native async summarization
+    summary_text = await _summarize_messages_async(llm, non_summary_old)
 
-    summary_msg = SystemMessage(
-        content=(
-            f"[CONVERSATION SUMMARY — earlier messages compacted]\n\n"
-            f"{summary_text}\n\n"
-            f"[END SUMMARY — recent messages follow]"
-        )
+    # Create a HumanMessage with summary marker (not SystemMessage,
+    # so agent_node won't strip it during system prompt injection).
+    summary_msg = HumanMessage(
+        content=(f"{SUMMARY_MARKER}\n\n{summary_text}\n\n[END SUMMARY — recent messages follow]")
     )
 
-    new_messages = [summary_msg] + recent_messages
+    # Build RemoveMessage list for all old messages (including previous summaries)
+    removals = [RemoveMessage(id=m.id) for m in old_messages if getattr(m, "id", None)]
+
     logger.info(
         f"Compacted {len(old_messages)} old messages into summary "
         f"({len(summary_text)} chars), keeping {len(recent_messages)} recent"
     )
-    return new_messages, summary_text
+    return removals, [summary_msg], summary_text
 
 
 def _build_transcript(messages: list) -> str:
