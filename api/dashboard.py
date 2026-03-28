@@ -1121,6 +1121,54 @@ def update_thread_title(
     return {"ok": True, "title": body.title}
 
 
+@router.post("/threads/{thread_id}/repair")
+async def repair_thread(thread_id: str, user: dict = Depends(get_current_user)):
+    """Repair a corrupted thread by removing orphaned compaction summaries
+    and cron-synced AIMessages, then re-compacting cleanly."""
+    _check_thread_access(thread_id, user)
+    meta = _thread_meta.get(thread_id, {})
+    agent_id = meta.get("agent_id", "default")
+    try:
+        agent = _get_agent(agent_id)
+    except Exception:
+        raise HTTPException(status_code=503, detail="Agent not available")
+    if not agent.is_initialized:
+        raise HTTPException(status_code=503, detail="Agent not initialized")
+
+    from langchain_core.messages import RemoveMessage, SystemMessage
+
+    config = {"configurable": {"thread_id": thread_id}}
+    state = await agent._graph.aget_state(config)
+    if not state or not state.values:
+        raise HTTPException(status_code=404, detail="Thread has no state")
+
+    messages = state.values.get("messages", [])
+    original_count = len(messages)
+
+    # Remove all SystemMessages (old broken compaction summaries).
+    to_remove = []
+    for msg in messages:
+        if isinstance(msg, SystemMessage) and getattr(msg, "id", None):
+            to_remove.append(msg.id)
+
+    if to_remove:
+        removals = [RemoveMessage(id=mid) for mid in to_remove]
+        await agent._graph.aupdate_state(config, {"messages": removals})
+
+    # Verify final state
+    final_state = await agent._graph.aget_state(config)
+    final_count = 0
+    if final_state and final_state.values:
+        final_count = len(final_state.values.get("messages", []))
+
+    return {
+        "ok": True,
+        "original_messages": original_count,
+        "removed": len(to_remove),
+        "final_messages": final_count,
+    }
+
+
 @router.delete("/threads/{thread_id}")
 def delete_thread(thread_id: str, user: dict = Depends(get_current_user)):
     _check_thread_access(thread_id, user)
