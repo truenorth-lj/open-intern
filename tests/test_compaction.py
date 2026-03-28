@@ -75,10 +75,12 @@ class TestCompactContext:
     async def test_compaction_produces_summary(self):
         msgs = []
         for i in range(30):
-            msgs.append(_make_msg(
-                role="human" if i % 2 == 0 else "ai",
-                content=f"Message {i}",
-            ))
+            msgs.append(
+                _make_msg(
+                    role="human" if i % 2 == 0 else "ai",
+                    content=f"Message {i}",
+                )
+            )
 
         llm = MagicMock()
         mock_result = MagicMock()
