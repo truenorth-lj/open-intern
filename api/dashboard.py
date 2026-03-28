@@ -1145,9 +1145,7 @@ async def repair_thread(thread_id: str, user: dict = Depends(get_current_user)):
     messages = state.values.get("messages", [])
     original_count = len(messages)
 
-    # Identify messages to remove:
-    # 1. All SystemMessages (old broken compaction summaries)
-    # 2. Orphaned human messages without AI responses (from error recovery)
+    # Remove all SystemMessages (old broken compaction summaries).
     to_remove = []
     for msg in messages:
         if isinstance(msg, SystemMessage) and getattr(msg, "id", None):
