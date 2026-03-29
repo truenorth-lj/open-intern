@@ -590,6 +590,12 @@ def create_scheduler_tools(scheduler: CronScheduler, agent_id: str) -> list:
             delivery_platform: New delivery platform ("lark", "telegram", "discord", "").
             delivery_chat_id: New chat/channel ID for delivery.
         """
+        valid_schedule_types = {"cron", "interval", "once"}
+        valid_platforms = {"lark", "telegram", "discord", ""}
+        if schedule_type and schedule_type not in valid_schedule_types:
+            return f"Invalid schedule_type. Must be one of: {valid_schedule_types}"
+        if delivery_platform and delivery_platform not in valid_platforms:
+            return f"Invalid delivery_platform. Must be one of: {valid_platforms}"
         kwargs = {}
         for field in (
             "name",
