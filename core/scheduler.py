@@ -518,11 +518,14 @@ def create_scheduler_tools(scheduler: CronScheduler, agent_id: str) -> list:
         for j in jobs:
             status = "enabled" if j["enabled"] else "paused"
             last = j.get("last_run_status") or "never"
+            delivery = j.get("delivery_chat_id") or "none"
+            platform = j.get("delivery_platform") or "none"
             lines.append(
                 f"- {j['name']} (ID: {j['id'][:8]}…) "
                 f"[{j['schedule_type']}: {j['schedule_expr']}] "
                 f"status={status}, last_run={last}, "
-                f"next={j.get('next_run_at', 'N/A')}"
+                f"next={j.get('next_run_at', 'N/A')}, "
+                f"delivery={platform}:{delivery}"
             )
         return "\n".join(lines)
 
@@ -562,9 +565,59 @@ def create_scheduler_tools(scheduler: CronScheduler, agent_id: str) -> list:
             return f"Resumed scheduled job {job_id}."
         return f"Job {job_id} not found."
 
+    @tool
+    def update_scheduled_job(
+        job_id: str,
+        name: str = "",
+        schedule_type: str = "",
+        schedule_expr: str = "",
+        prompt: str = "",
+        timezone: str = "",
+        channel_id: str = "",
+        delivery_platform: str = "",
+        delivery_chat_id: str = "",
+    ) -> str:
+        """Update an existing scheduled job. Only provide the fields you want to change.
+
+        Args:
+            job_id: The job ID (UUID) to update.
+            name: New name for the job.
+            schedule_type: New schedule type ("cron", "interval", or "once").
+            schedule_expr: New schedule expression.
+            prompt: New prompt/instruction.
+            timezone: New IANA timezone.
+            channel_id: New channel for memory scoping.
+            delivery_platform: New delivery platform ("lark", "telegram", "discord", "").
+            delivery_chat_id: New chat/channel ID for delivery.
+        """
+        kwargs = {}
+        for field in (
+            "name",
+            "schedule_type",
+            "schedule_expr",
+            "prompt",
+            "timezone",
+            "channel_id",
+            "delivery_platform",
+            "delivery_chat_id",
+        ):
+            val = locals()[field]
+            if val:
+                kwargs[field] = val
+        if not kwargs:
+            return "No fields to update. Provide at least one field to change."
+        result = scheduler.update_job(job_id, **kwargs)
+        if result:
+            return (
+                f"Updated scheduled job '{result['name']}' (ID: {result['id']}). "
+                f"Changes: {', '.join(kwargs.keys())}"
+            )
+        return f"Job {job_id} not found."
+
     return [
         create_scheduled_job,
         list_scheduled_jobs,
+        update_scheduled_job,
         delete_scheduled_job,
         pause_scheduled_job,
         resume_scheduled_job,

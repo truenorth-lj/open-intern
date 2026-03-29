@@ -118,14 +118,15 @@ class TestCronSchedulerJobToDict:
 class TestSchedulerTools:
     """Test that scheduler tools are properly created."""
 
-    def test_creates_five_tools(self):
+    def test_creates_six_tools(self):
         scheduler = MagicMock(spec=CronScheduler)
         tools = create_scheduler_tools(scheduler, "test-agent")
-        assert len(tools) == 5
+        assert len(tools) == 6
         names = {t.name for t in tools}
         assert names == {
             "create_scheduled_job",
             "list_scheduled_jobs",
+            "update_scheduled_job",
             "delete_scheduled_job",
             "pause_scheduled_job",
             "resume_scheduled_job",
