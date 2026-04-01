@@ -106,12 +106,14 @@ class Integration(ABC):
         except Exception:
             logger.debug("Failed to capture contact", exc_info=True)
 
-        # Send typing indicator (platform-specific; no-op by default)
+        # Send typing indicator only for DMs — group chats should not get
+        # "Thinking..." placeholder messages cluttering the conversation.
         typing_msg_id: str | None = None
-        try:
-            typing_msg_id = await self.send_typing_indicator(event)
-        except Exception:
-            logger.debug("Typing indicator failed", exc_info=True)
+        if event.is_dm:
+            try:
+                typing_msg_id = await self.send_typing_indicator(event)
+            except Exception:
+                logger.debug("Typing indicator failed", exc_info=True)
 
         # Let the agent process it
         thread_id = event.thread_id or event.channel_id

@@ -313,6 +313,23 @@ class LarkBot(Integration):
             user_name = user_id or "unknown"
 
         chat_type = message.chat_type or ""
+        is_dm = chat_type == "p2p"
+
+        # In group chats, only respond when the bot is explicitly @mentioned.
+        # Without this gate the bot replies to every message in the group,
+        # flooding it with "Thinking..." indicators and unsolicited responses.
+        if not is_dm:
+            mentions = message.mentions or []
+            bot_mentioned = any(m.id and m.id.open_id == self._bot_open_id for m in mentions)
+            if not bot_mentioned:
+                logger.debug("Ignoring group message (bot not mentioned)")
+                return
+            # Strip the @mention tag from message text so the agent sees clean input
+            for m in mentions:
+                if m.id and m.id.open_id == self._bot_open_id and m.key:
+                    text = text.replace(m.key, "").strip()
+                    break
+
         chat_event = ChatEvent(
             platform="lark",
             event_type="message",
@@ -320,10 +337,10 @@ class LarkBot(Integration):
             user_id=open_id,
             user_name=user_name,
             content=text,
-            is_dm=(chat_type == "p2p"),
+            is_dm=is_dm,
             thread_id=(
                 (message.chat_id or message.message_id)
-                if chat_type == "p2p"
+                if is_dm
                 else (getattr(message, "root_id", None) or message.message_id)
             ),
             raw=data,
